@@ -100,6 +100,31 @@ export async function sendStudentWelcomeEmail(input: {
   });
 }
 
+export async function sendStaffWelcomeEmail(input: {
+  name: string;
+  email: string;
+  password: string;
+}): Promise<void> {
+  await sendTemplatedEmail({
+    template: "staff-welcome",
+    intendedTo: input.email,
+    subject: "Tus accesos para entrar al panel de instructores",
+    greetingName: input.name,
+    data: {
+      kicker: "Acceso",
+      title: "Ya puedes entrar al panel de Gestiona Capital Humano",
+      highlights: [
+        { label: "Usuario", value: input.email },
+        { label: "Contraseña", value: input.password },
+      ],
+      action: {
+        label: "Entrar al panel",
+        href: frontendUrl("/admin/login"),
+      },
+    },
+  });
+}
+
 export async function sendCourseAccessEmail(input: {
   name: string;
   email: string;

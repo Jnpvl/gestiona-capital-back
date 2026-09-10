@@ -25,3 +25,7 @@ staffAdminRoutes.patch("/:id", ...adminOnly, (req, res, next) =>
 staffAdminRoutes.patch("/:id/status", ...adminOnly, (req, res, next) =>
   staffAdminController.updateStatus(req, res, next),
 );
+
+staffAdminRoutes.post("/:id/send-access", ...adminOnly, (req, res, next) =>
+  staffAdminController.sendAccess(req, res, next),
+);

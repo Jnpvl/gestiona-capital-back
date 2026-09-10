@@ -1,4 +1,5 @@
 import { AppError } from "../errors/app-error";
+import { notifySafely, sendStaffWelcomeEmail } from "./notification.service";
 import {
   createStaff,
   findStaffByEmail,
@@ -83,12 +84,46 @@ export class StaffAdminService {
       throw new AppError(400, "No puedes cambiar tu propio rol", "SELF_ROLE_CHANGE");
     }
 
-    const staff = await updateStaff(id, input);
+    const { sendAccessEmail, ...data } = input;
+    const staff = await updateStaff(id, data);
     if (!staff) {
       throw new AppError(404, "Miembro del staff no encontrado", "STAFF_NOT_FOUND");
     }
 
+    if (sendAccessEmail && data.password) {
+      await notifySafely(() =>
+        sendStaffWelcomeEmail({
+          name: staff.name,
+          email: staff.email,
+          password: data.password!,
+        }),
+      );
+    }
+
     return { staff };
+  }
+
+  async sendAccess(id: string, password: string, scope: StaffScope) {
+    const current = await findStaffById(id);
+    if (!current) {
+      throw new AppError(404, "Miembro del staff no encontrado", "STAFF_NOT_FOUND");
+    }
+    this.assertCanManageTarget(current.role, scope);
+
+    const staff = await updateStaff(id, { password });
+    if (!staff) {
+      throw new AppError(404, "Miembro del staff no encontrado", "STAFF_NOT_FOUND");
+    }
+
+    await notifySafely(() =>
+      sendStaffWelcomeEmail({
+        name: staff.name,
+        email: staff.email,
+        password,
+      }),
+    );
+
+    return { staff, emailed: true as const };
   }
 
   async updateStatus(id: string, active: boolean, scope: StaffScope) {

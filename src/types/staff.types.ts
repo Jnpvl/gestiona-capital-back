@@ -100,6 +100,8 @@ export interface UpdateStaffInput {
   firstNames?: string;
   email?: string;
   password?: string;
+  /** If true with password, email panel access credentials after update. */
+  sendAccessEmail?: boolean;
   role?: StaffRole;
   age?: number | null;
   gender?: StaffGender | null;
