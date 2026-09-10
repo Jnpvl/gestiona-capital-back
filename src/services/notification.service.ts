@@ -40,8 +40,8 @@ async function sendTemplatedEmail(input: {
   data?: Record<string, unknown>;
   attachments?: Attachment[];
 }): Promise<void> {
-  const overrideTo = env.mail.to.trim();
-  const to = overrideTo || input.intendedTo;
+  // MAIL_TO solo alimenta el formulario de contacto; las notificaciones van al destinatario real.
+  const to = input.intendedTo;
   const logo = await logoAttachment();
   const greeting = input.greetingName.trim()
     ? `Hola, ${firstName(input.greetingName)}:`
