@@ -1,0 +1,21 @@
+{{#if previewNote}}{{previewNote}}
+
+{{/if}}{{greeting}}
+
+{{title}}
+
+Completaste la capacitación «{{courseTitle}}». Gracias por el tiempo y el trabajo que le dedicaste.
+
+{{#if hasFiles}}Adjuntamos tu constancia en este correo. Si tu inscripción fue por empresa, también va el formato DC-3. Guárdalos: te sirven para tu expediente y para la STPS.
+{{else}}Tu constancia ya está lista en Mis cursos. Entra y descárgala cuando la necesites.
+{{/if}}
+Si más adelante la pierdes, la puedes volver a bajar desde el mismo curso.
+
+{{#each highlights}}{{label}}: {{value}}
+{{/each}}
+{{#if action.href}}{{action.label}}: {{action.href}}
+{{/if}}
+Si tienes alguna duda, responde este correo o escríbenos a hola@gestionach.com.
+
+Equipo de Gestiona Capital Humano
+Guaymas, Sonora

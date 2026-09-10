@@ -1,0 +1,21 @@
+{{#if previewNote}}{{previewNote}}
+
+{{/if}}{{greeting}}
+
+{{title}}
+
+Revisamos «{{assignmentTitle}}» del curso «{{courseTitle}}» y sí cumple con lo pedido. Ya puedes seguir con las siguientes clases.
+
+{{#if quote.text}}Tu instructor dejó este comentario:
+
+{{quote.label}}: {{quote.text}}
+{{else}}Si era una de las últimas evidencias, estás muy cerca de terminar y de obtener tu constancia.
+{{/if}}
+{{#each highlights}}{{label}}: {{value}}
+{{/each}}
+{{#if action.href}}{{action.label}}: {{action.href}}
+{{/if}}
+Si tienes alguna duda, responde este correo o escríbenos a hola@gestionach.com.
+
+Equipo de Gestiona Capital Humano
+Guaymas, Sonora

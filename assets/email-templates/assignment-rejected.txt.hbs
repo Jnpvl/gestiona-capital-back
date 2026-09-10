@@ -1,0 +1,21 @@
+{{#if previewNote}}{{previewNote}}
+
+{{/if}}{{greeting}}
+
+{{title}}
+
+Revisamos «{{assignmentTitle}}» del curso «{{courseTitle}}» y todavía no podemos aceptarla. No se pierde el intento: corrige lo que te pedimos y carga el archivo otra vez.
+
+{{#if quote.text}}Lee con calma el comentario de tu instructor; ahí está lo que falta.
+
+{{quote.label}}: {{quote.text}}
+{{else}}Entra al curso, revisa la consigna y sube una nueva entrega.
+{{/if}}
+{{#each highlights}}{{label}}: {{value}}
+{{/each}}
+{{#if action.href}}{{action.label}}: {{action.href}}
+{{/if}}
+Si tienes alguna duda, responde este correo o escríbenos a hola@gestionach.com.
+
+Equipo de Gestiona Capital Humano
+Guaymas, Sonora

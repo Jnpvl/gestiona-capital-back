@@ -1,0 +1,17 @@
+{{#> layout}}
+  <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2A2A2E">
+    Revisamos «{{assignmentTitle}}» del curso «{{courseTitle}}» y todavía no podemos aceptarla. No se pierde el intento: corrige lo que te pedimos y carga el archivo otra vez.
+  </p>
+  {{#if quote.text}}
+  <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2A2A2E">
+    Lee con calma el comentario de tu instructor; ahí está lo que falta.
+  </p>
+  {{else}}
+  <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2A2A2E">
+    Entra al curso, revisa la consigna y sube una nueva entrega.
+  </p>
+  {{/if}}
+  {{> highlights}}
+  {{> quote}}
+  {{> cta}}
+{{/layout}}

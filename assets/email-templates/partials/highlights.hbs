@@ -1,0 +1,16 @@
+{{#if highlights}}
+<table role="presentation" style="width:100%;margin:8px 0 20px;border-collapse:collapse;background:#F7F7FB;border:1px solid #E4E4F0;border-radius:12px">
+  <tr>
+    <td style="padding:14px 16px">
+      <table role="presentation" style="width:100%;border-collapse:collapse">
+        {{#each highlights}}
+        <tr>
+          <td style="padding:8px 0;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#6B6B70;width:38%;vertical-align:top">{{label}}</td>
+          <td style="padding:8px 0 8px 12px;font-size:15px;font-weight:700;color:#2A2A2E;word-break:break-word">{{value}}</td>
+        </tr>
+        {{/each}}
+      </table>
+    </td>
+  </tr>
+</table>
+{{/if}}

@@ -1,0 +1,5 @@
+ALTER TABLE students
+  ADD COLUMN IF NOT EXISTS privacy_accepted_at TIMESTAMPTZ;
+
+ALTER TABLE staff
+  ADD COLUMN IF NOT EXISTS privacy_accepted_at TIMESTAMPTZ;

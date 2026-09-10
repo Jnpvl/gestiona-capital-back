@@ -1,0 +1,26 @@
+import { Router } from "express";
+import { authRoutes } from "./auth.routes";
+import { studentRoutes } from "./student.routes";
+import { staffAdminRoutes } from "./staff-admin.routes";
+import { companyRoutes } from "./company.routes";
+import { stpsRoutes } from "./stps.routes";
+import { courseAdminRoutes } from "./course-admin.routes";
+import { coursePublicRoutes } from "./course-public.routes";
+import { constanciaPublicRoutes } from "./constancia-public.routes";
+import { contactRoutes } from "./contact.routes";
+import { uploadRoutes } from "./upload.routes";
+import { studentCourseRoutes } from "./student-course.routes";
+
+export const apiRoutes = Router();
+
+apiRoutes.use("/auth", authRoutes);
+apiRoutes.use("/courses", coursePublicRoutes);
+apiRoutes.use("/contact", contactRoutes);
+apiRoutes.use("/constancias", constanciaPublicRoutes);
+apiRoutes.use("/student/courses", studentCourseRoutes);
+apiRoutes.use("/admin/students", studentRoutes);
+apiRoutes.use("/admin/companies", companyRoutes);
+apiRoutes.use("/admin/stps", stpsRoutes);
+apiRoutes.use("/admin/staff", staffAdminRoutes);
+apiRoutes.use("/admin/courses", courseAdminRoutes);
+apiRoutes.use("/admin/uploads", uploadRoutes);

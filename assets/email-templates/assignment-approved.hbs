@@ -1,0 +1,17 @@
+{{#> layout}}
+  <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2A2A2E">
+    Revisamos «{{assignmentTitle}}» del curso «{{courseTitle}}» y sí cumple con lo pedido. Ya puedes seguir con las siguientes clases.
+  </p>
+  {{#if quote.text}}
+  <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2A2A2E">
+    Tu instructor dejó este comentario:
+  </p>
+  {{else}}
+  <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2A2A2E">
+    Si era una de las últimas evidencias, estás muy cerca de terminar y de obtener tu constancia.
+  </p>
+  {{/if}}
+  {{> highlights}}
+  {{> quote}}
+  {{> cta}}
+{{/layout}}

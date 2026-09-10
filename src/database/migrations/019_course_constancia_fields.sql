@@ -1,0 +1,6 @@
+ALTER TABLE courses
+  ADD COLUMN IF NOT EXISTS instructor_id UUID REFERENCES staff(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS location VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS period VARCHAR(255);
+
+CREATE INDEX IF NOT EXISTS idx_courses_instructor ON courses (instructor_id);

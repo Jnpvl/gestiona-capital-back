@@ -1,0 +1,19 @@
+{{#> layout}}
+  <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2A2A2E">
+    Completaste la capacitación «{{courseTitle}}». Gracias por el tiempo y el trabajo que le dedicaste.
+  </p>
+  {{#if hasFiles}}
+  <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2A2A2E">
+    Adjuntamos tu constancia en este correo. Si tu inscripción fue por empresa, también va el formato DC-3. Guárdalos: te sirven para tu expediente y para la STPS.
+  </p>
+  {{else}}
+  <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2A2A2E">
+    Tu constancia ya está lista en Mis cursos. Entra y descárgala cuando la necesites.
+  </p>
+  {{/if}}
+  <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2A2A2E">
+    Si más adelante la pierdes, la puedes volver a bajar desde el mismo curso.
+  </p>
+  {{> highlights}}
+  {{> cta}}
+{{/layout}}

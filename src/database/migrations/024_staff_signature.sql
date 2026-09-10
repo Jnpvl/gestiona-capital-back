@@ -1,0 +1,2 @@
+ALTER TABLE staff
+  ADD COLUMN IF NOT EXISTS signature_url VARCHAR(500);
