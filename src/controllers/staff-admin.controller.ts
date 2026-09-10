@@ -5,6 +5,7 @@ import { getStaffScopeFromRequest } from "../shared/auth/staff-scope";
 import {
   createStaffSchema,
   listStaffQuerySchema,
+  sendStaffAccessSchema,
   updateStaffSchema,
   updateStaffStatusSchema,
 } from "../validators/staff.validator";
@@ -68,6 +69,20 @@ export class StaffAdminController {
       const scope = getStaffScopeFromRequest(req);
       const { active } = updateStaffStatusSchema.parse(req.body);
       const result = await staffAdminService.updateStatus(getParamId(req), active, scope);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async sendAccess(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.auth) {
+        throw new AppError(401, "No autorizado", "UNAUTHORIZED");
+      }
+      const scope = getStaffScopeFromRequest(req);
+      const { password } = sendStaffAccessSchema.parse(req.body);
+      const result = await staffAdminService.sendAccess(getParamId(req), password, scope);
       res.json(result);
     } catch (error) {
       next(error);

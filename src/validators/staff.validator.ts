@@ -74,6 +74,7 @@ export const updateStaffSchema = z
     firstNames: namePartSchema.optional(),
     email: z.string().email().optional(),
     password: z.string().min(6).optional(),
+    sendAccessEmail: z.boolean().optional(),
     role: z.enum(["admin", "teacher"]).optional(),
     age: z.coerce.number().int().min(16).max(120).optional().nullable(),
     gender: staffGenderSchema.optional().nullable(),
@@ -115,4 +116,8 @@ export const listStaffQuerySchema = z.object({
     .transform((value) => (value === undefined ? undefined : value === "true")),
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(50).optional().default(10),
+});
+
+export const sendStaffAccessSchema = z.object({
+  password: z.string().trim().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
