@@ -27,10 +27,11 @@ export const env = {
     name: required("DB_NAME"),
   },
   mail: {
-    host: optional("MAIL_HOST", "smtp.gmail.com"),
-    port: Number(optional("MAIL_PORT", "587")),
+    host: optional("MAIL_HOST", "smtp-relay.brevo.com"),
+    port: Number(optional("MAIL_PORT", "2525")),
     user: optional("MAIL_USER"),
     pass: optional("MAIL_PASS"),
+    from: optional("MAIL_FROM"),
     to: optional("MAIL_TO"),
   },
 } as const;

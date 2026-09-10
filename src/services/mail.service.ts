@@ -62,8 +62,14 @@ export async function sendMail(input: SendMailInput): Promise<void> {
 
   const transporter = createTransport();
 
+  // Brevo: MAIL_USER es login SMTP; MAIL_FROM debe ser un sender del dominio autenticado.
+  const fromAddress =
+    env.mail.from.trim() ||
+    env.mail.to.trim() ||
+    env.mail.user.trim();
+
   await transporter.sendMail({
-    from: `"Gestiona Capital Humano" <${env.mail.user.trim()}>`,
+    from: `"Gestiona Capital Humano" <${fromAddress}>`,
     to,
     replyTo: input.replyTo,
     subject: input.subject,

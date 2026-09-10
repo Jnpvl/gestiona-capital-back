@@ -14,9 +14,23 @@ export function createApp() {
       crossOriginResourcePolicy: { policy: "cross-origin" },
     }),
   );
+  const allowedOrigins = new Set(
+    [
+      env.frontendUrl,
+      "https://www.gestionach.com",
+      "https://gestionach.com",
+      "http://localhost:3000",
+    ].filter(Boolean),
+  );
   app.use(
     cors({
-      origin: env.frontendUrl,
+      origin(origin, callback) {
+        if (!origin || allowedOrigins.has(origin)) {
+          callback(null, true);
+          return;
+        }
+        callback(null, false);
+      },
       credentials: true,
       exposedHeaders: ["Content-Disposition"],
     }),
