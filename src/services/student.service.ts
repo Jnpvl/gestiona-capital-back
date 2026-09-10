@@ -105,9 +105,20 @@ export class StudentService {
     }
 
     try {
-      const student = await updateStudent(id, input);
+      const { sendAccessEmail, ...data } = input;
+      const student = await updateStudent(id, data);
       if (!student) {
         throw new AppError(404, "Estudiante no encontrado", "STUDENT_NOT_FOUND");
+      }
+
+      if (sendAccessEmail && data.password) {
+        await notifySafely(() =>
+          sendStudentWelcomeEmail({
+            name: student.name,
+            email: student.email,
+            password: data.password!,
+          }),
+        );
       }
 
       return { student };
@@ -117,6 +128,29 @@ export class StudentService {
       }
       throw error;
     }
+  }
+
+  async sendAccess(id: string, password: string, scope: StaffScope) {
+    await this.assertStaffCanAccessStudent(id, scope);
+    const current = await findStudentById(id);
+    if (!current) {
+      throw new AppError(404, "Estudiante no encontrado", "STUDENT_NOT_FOUND");
+    }
+
+    const student = await updateStudent(id, { password });
+    if (!student) {
+      throw new AppError(404, "Estudiante no encontrado", "STUDENT_NOT_FOUND");
+    }
+
+    await notifySafely(() =>
+      sendStudentWelcomeEmail({
+        name: student.name,
+        email: student.email,
+        password,
+      }),
+    );
+
+    return { student, emailed: true as const };
   }
 
   async updateStatus(id: string, active: boolean, scope: StaffScope) {

@@ -7,6 +7,7 @@ import {
   listStudentsQuerySchema,
   updateStudentSchema,
   updateStudentStatusSchema,
+  sendStudentAccessSchema,
 } from "../validators/student.validator";
 
 function getParamId(req: Request): string {
@@ -118,6 +119,18 @@ export class StudentController {
       next(error);
     }
   }
+
+  async sendAccess(req: Request, res: Response, next: NextFunction) {
+    try {
+      const scope = getStaffScopeFromRequest(req);
+      const { password } = sendStudentAccessSchema.parse(req.body);
+      const result = await studentService.sendAccess(getParamId(req), password, scope);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
 }
 
 export const studentController = new StudentController();

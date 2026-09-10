@@ -73,6 +73,7 @@ export const updateStudentSchema = z.object({
   firstNames: namePartSchema.optional(),
   email: z.string().trim().email().optional(),
   password: z.string().trim().min(6).optional(),
+  sendAccessEmail: z.boolean().optional(),
   phone: z.string().trim().min(7).optional(),
   notes: z.string().trim().nullable().optional(),
   alumnoType: alumnoTypeSchema.optional(),
@@ -82,6 +83,10 @@ export const updateStudentSchema = z.object({
   residenceLocation: z.string().trim().min(2).optional(),
   ...optionalProfileFields,
   active: z.boolean().optional(),
+});
+
+export const sendStudentAccessSchema = z.object({
+  password: z.string().trim().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
 
 export const updateStudentStatusSchema = z.object({

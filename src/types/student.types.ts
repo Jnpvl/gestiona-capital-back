@@ -218,6 +218,8 @@ export interface UpdateStudentInput {
   companyId?: string | null;
   active?: boolean;
   password?: string;
+  /** If true with password, email welcome/access credentials after update. */
+  sendAccessEmail?: boolean;
 }
 
 export interface ListStudentsFilters {

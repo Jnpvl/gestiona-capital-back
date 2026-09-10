@@ -22,6 +22,10 @@ studentRoutes.patch("/:id", ...staffAuth, (req, res, next) =>
   studentController.update(req, res, next),
 );
 
+studentRoutes.post("/:id/send-access", ...staffAuth, (req, res, next) =>
+  studentController.sendAccess(req, res, next),
+);
+
 studentRoutes.patch("/:id/status", ...staffAuth, (req, res, next) =>
   studentController.updateStatus(req, res, next),
 );
