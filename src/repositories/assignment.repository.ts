@@ -364,3 +364,32 @@ export async function getAssignmentBlockMeta(
     title: row.title,
   };
 }
+
+/** Assignment block IDs currently stored for a course. */
+export async function listAssignmentBlockIdsForCourse(courseId: string): Promise<string[]> {
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT lb.id
+     FROM lesson_blocks lb
+     INNER JOIN lessons l ON l.id = lb.lesson_id
+     INNER JOIN course_sections cs ON cs.id = l.section_id
+     WHERE cs.course_id = $1 AND lb.type = 'assignment'`,
+    [courseId],
+  );
+  return rows.map((row) => row.id);
+}
+
+/** All submission file paths for the given assignment blocks (every attempt). */
+export async function listSubmissionFileUrlsByBlockIds(blockIds: string[]): Promise<string[]> {
+  if (blockIds.length === 0) return [];
+
+  const { rows } = await pool.query<{ file_url: string }>(
+    `SELECT file_url
+     FROM assignment_submissions
+     WHERE block_id = ANY($1::uuid[])
+       AND file_url IS NOT NULL
+       AND btrim(file_url) <> ''`,
+    [blockIds],
+  );
+
+  return rows.map((row) => row.file_url.trim());
+}

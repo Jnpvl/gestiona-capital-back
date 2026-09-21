@@ -83,7 +83,13 @@ function mapCourseRecord(row: CourseRecord): CourseRecord {
   };
 }
 
-function mapListItem(row: CourseRecord & { lessons_count: string; students_count: string }): CourseListItem {
+function mapListItem(
+  row: CourseRecord & {
+    lessons_count: string;
+    students_count: string;
+    instructor_name?: string | null;
+  },
+): CourseListItem {
   return {
     id: row.id,
     title: row.title,
@@ -96,6 +102,8 @@ function mapListItem(row: CourseRecord & { lessons_count: string; students_count
     featured: row.featured,
     lessonsCount: Number(row.lessons_count),
     studentsCount: Number(row.students_count),
+    instructorId: row.instructor_id ?? null,
+    instructorName: row.instructor_name?.trim() || null,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -268,6 +276,8 @@ export async function findCoursesPaginated(
   if (filters.instructorId) {
     values.push(filters.instructorId);
     conditions.push(`c.instructor_id = $${values.length}`);
+  } else if (filters.unassigned) {
+    conditions.push(`c.instructor_id IS NULL`);
   }
 
   if (filters.search) {
@@ -288,13 +298,21 @@ export async function findCoursesPaginated(
   const limitIndex = values.length + 1;
   const offsetIndex = values.length + 2;
 
-  const { rows } = await pool.query<CourseRecord & { lessons_count: string; students_count: string }>(
+  const { rows } = await pool.query<
+    CourseRecord & {
+      lessons_count: string;
+      students_count: string;
+      instructor_name: string | null;
+    }
+  >(
     `SELECT c.*,
+            MAX(st.name) AS instructor_name,
             COUNT(DISTINCT l.id)::text AS lessons_count,
             (SELECT COUNT(*)::text
              FROM enrollments e
              WHERE e.course_id = c.id AND e.status = 'active') AS students_count
      FROM courses c
+     LEFT JOIN staff st ON st.id = c.instructor_id
      LEFT JOIN course_sections cs ON cs.course_id = c.id
      LEFT JOIN lessons l ON l.section_id = cs.id
      ${where}
@@ -310,6 +328,7 @@ export async function findCoursesPaginated(
         ...mapCourseRecord(row),
         lessons_count: row.lessons_count,
         students_count: row.students_count,
+        instructor_name: row.instructor_name,
       }),
     ),
     total,
@@ -360,6 +379,21 @@ export async function findCourseBySlugPublic(slug: string): Promise<CoursePublic
   };
 }
 
+/** Public /uploads/... paths currently referenced by lesson blocks of a course. */
+export async function listCourseBlockResourceUrls(courseId: string): Promise<string[]> {
+  const { rows } = await pool.query<{ resource_url: string }>(
+    `SELECT lb.resource_url
+     FROM lesson_blocks lb
+     INNER JOIN lessons l ON l.id = lb.lesson_id
+     INNER JOIN course_sections s ON s.id = l.section_id
+     WHERE s.course_id = $1
+       AND lb.resource_url IS NOT NULL
+       AND btrim(lb.resource_url) <> ''`,
+    [courseId],
+  );
+  return rows.map((row) => row.resource_url.trim());
+}
+
 export async function findCourseById(id: string): Promise<CourseRecord | null> {
   const { rows } = await pool.query<CourseRecord>(
     "SELECT * FROM courses WHERE id = $1 LIMIT 1",
@@ -404,6 +438,16 @@ export async function createCourse(input: CreateCourseInput): Promise<CourseDeta
     [input.title.trim(), slug, input.instructorId ?? null],
   );
   return mapCourseDetail(mapCourseRecord(rows[0]), []);
+}
+
+export async function updateCourseCoverImage(
+  id: string,
+  coverImage: string | null,
+): Promise<void> {
+  await pool.query(
+    `UPDATE courses SET cover_image = $1, updated_at = NOW() WHERE id = $2`,
+    [coverImage, id],
+  );
 }
 
 export async function updateCoursePromotion(
@@ -468,7 +512,7 @@ export async function updateCoursePromotion(
       input.dc3TemplateUrl !== undefined ? input.dc3TemplateUrl : current.dc3_template_url,
       input.location !== undefined ? input.location : current.location,
       input.period !== undefined ? input.period : current.period,
-      current.instructor_id ?? input.instructorId ?? null,
+      input.instructorId !== undefined ? input.instructorId : current.instructor_id,
       input.stpsThematicAreaCode !== undefined
         ? input.stpsThematicAreaCode?.trim() || null
         : current.stps_thematic_area_code,
@@ -689,4 +733,10 @@ export async function replaceCourseContent(
   }
 
   return findCourseDetailById(courseId);
+}
+
+/** Hard-delete a course row. Related rows cascade via FK. */
+export async function deleteCourseById(id: string): Promise<boolean> {
+  const { rowCount } = await pool.query(`DELETE FROM courses WHERE id = $1`, [id]);
+  return (rowCount ?? 0) > 0;
 }

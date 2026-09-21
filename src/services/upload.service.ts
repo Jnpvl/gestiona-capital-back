@@ -50,19 +50,120 @@ function getKindConfig(kind: CourseAssetKind) {
   };
 }
 
+/**
+ * Deletes a file under uploads/ safely.
+ * @returns true if the file was removed or was already missing; false if path was invalid.
+ */
+export async function deleteManagedUpload(publicPath?: string | null): Promise<boolean> {
+  if (!publicPath?.trim()) return false;
+
+  let normalized = publicPath.trim().split("?")[0];
+
+  // Full URL → pathname
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    try {
+      normalized = new URL(normalized).pathname;
+    } catch {
+      return false;
+    }
+  }
+
+  // Legacy paths without /uploads prefix
+  if (normalized.startsWith("/images/") || normalized.startsWith("/files/")) {
+    normalized = `/uploads${normalized}`;
+  }
+
+  if (!normalized.startsWith("/uploads/")) return false;
+
+  const relative = normalized.slice("/uploads/".length);
+  if (!relative || relative.includes("..") || path.isAbsolute(relative)) return false;
+
+  const uploadsRoot = path.resolve(env.uploadsDir);
+  const absolutePath = path.resolve(uploadsRoot, relative);
+  if (absolutePath !== uploadsRoot && !absolutePath.startsWith(`${uploadsRoot}${path.sep}`)) {
+    return false;
+  }
+
+  try {
+    await fs.unlink(absolutePath);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return true;
+    throw new AppError(
+      500,
+      `No se pudo eliminar el archivo en el servidor: ${absolutePath}`,
+      "UPLOAD_DELETE_FAILED",
+    );
+  }
+}
+
+/** Best-effort batch delete; never throws for individual failures. */
+export async function deleteManagedUploadsSafe(paths: Array<string | null | undefined>): Promise<void> {
+  const unique = [
+    ...new Set(paths.map((path) => path?.trim()).filter((path): path is string => Boolean(path))),
+  ];
+
+  await Promise.all(
+    unique.map(async (path) => {
+      try {
+        await deleteManagedUpload(path);
+      } catch {
+        // Ignore leftovers that cannot be removed.
+      }
+    }),
+  );
+}
+
+/**
+ * Deletes on-disk upload trees for a course slug
+ * (images/cursos, files/cursos, and student tareas).
+ */
+export async function deleteCourseUploadTrees(courseSlug: string): Promise<void> {
+  const folder = sanitizeSlug(courseSlug);
+  const roots = [
+    path.join(env.uploadsDir, "images/cursos", folder),
+    path.join(env.uploadsDir, "files/cursos", folder),
+    path.join(env.uploadsDir, "tareas", folder),
+  ];
+
+  await Promise.all(
+    roots.map(async (dir) => {
+      try {
+        await fs.rm(dir, { recursive: true, force: true });
+      } catch {
+        // Ignore missing or unreadable directories.
+      }
+    }),
+  );
+}
+
 export async function saveCourseAsset(
   courseSlug: string,
   kind: CourseAssetKind,
   file: Express.Multer.File,
+  previousPath?: string | null,
 ): Promise<string> {
   const config = getKindConfig(kind);
 
   if (!config.mimeTypes.has(file.mimetype)) {
-    throw new AppError(400, "Tipo de archivo no permitido", "INVALID_FILE_TYPE");
+    throw new AppError(
+      400,
+      kind === "image"
+        ? "Formato no permitido. Usa JPG, PNG, WEBP o GIF."
+        : "Formato no permitido. Solo se aceptan archivos PDF.",
+      "INVALID_FILE_TYPE",
+    );
   }
 
   if (file.size > config.maxBytes) {
-    throw new AppError(400, "El archivo excede el tamaño permitido", "FILE_TOO_LARGE");
+    throw new AppError(
+      400,
+      kind === "image"
+        ? "La imagen es demasiado pesada. El máximo es 5 MB."
+        : "El PDF es demasiado pesado. El máximo es 20 MB.",
+      "FILE_TOO_LARGE",
+    );
   }
 
   const folderSlug = sanitizeSlug(courseSlug);
@@ -75,7 +176,12 @@ export async function saveCourseAsset(
 
   await fs.writeFile(absolutePath, file.buffer);
 
-  return `/uploads/${config.subdir}/${folderSlug}/${filename}`;
+  const publicPath = `/uploads/${config.subdir}/${folderSlug}/${filename}`;
+  if (previousPath && previousPath !== publicPath) {
+    await deleteManagedUpload(previousPath);
+  }
+
+  return publicPath;
 }
 
 export type StaffImageKind = "photo" | "logo" | "signature";
@@ -103,13 +209,22 @@ export async function saveStaffImage(
   },
   file: Express.Multer.File,
   kind: StaffImageKind = "photo",
+  previousPath?: string | null,
 ): Promise<string> {
   if (!IMAGE_MIME_TYPES.has(file.mimetype)) {
-    throw new AppError(400, "Tipo de archivo no permitido", "INVALID_FILE_TYPE");
+    throw new AppError(
+      400,
+      "Formato no permitido. Usa JPG, PNG, WEBP o GIF.",
+      "INVALID_FILE_TYPE",
+    );
   }
 
   if (file.size > MAX_IMAGE_BYTES) {
-    throw new AppError(400, "El archivo excede el tamaño permitido", "FILE_TOO_LARGE");
+    throw new AppError(
+      400,
+      "La imagen es demasiado pesada. El máximo es 5 MB.",
+      "FILE_TOO_LARGE",
+    );
   }
 
   const folder = staffUploadFolder(staff);
@@ -123,7 +238,12 @@ export async function saveStaffImage(
 
   await fs.writeFile(absolutePath, file.buffer);
 
-  return `/uploads/images/staff/${folder}/${filename}`;
+  const publicPath = `/uploads/images/staff/${folder}/${filename}`;
+  if (previousPath && previousPath !== publicPath) {
+    await deleteManagedUpload(previousPath);
+  }
+
+  return publicPath;
 }
 
 const ASSIGNMENT_MIME_TYPES = new Set([
@@ -139,6 +259,7 @@ export async function saveAssignmentSubmissionFile(input: {
   studentId: string;
   blockId: string;
   file: Express.Multer.File;
+  previousPath?: string | null;
 }): Promise<{ path: string; fileName: string }> {
   if (!ASSIGNMENT_MIME_TYPES.has(input.file.mimetype)) {
     throw new AppError(
@@ -171,8 +292,13 @@ export async function saveAssignmentSubmissionFile(input: {
 
   await fs.writeFile(absolutePath, input.file.buffer);
 
+  const publicPath = `/uploads/tareas/${folderSlug}/${studentFolder}/${blockFolder}/${storedName}`;
+  if (input.previousPath && input.previousPath !== publicPath) {
+    await deleteManagedUpload(input.previousPath);
+  }
+
   return {
-    path: `/uploads/tareas/${folderSlug}/${studentFolder}/${blockFolder}/${storedName}`,
+    path: publicPath,
     fileName,
   };
 }

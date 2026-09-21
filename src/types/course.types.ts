@@ -96,6 +96,8 @@ export interface CourseListItem {
   featured: boolean;
   lessonsCount: number;
   studentsCount: number;
+  instructorId: string | null;
+  instructorName: string | null;
   createdAt: string;
 }
 
@@ -230,6 +232,8 @@ export interface ListCoursesFilters {
   status?: CourseStatus;
   /** When set, only courses owned by this instructor. */
   instructorId?: string;
+  /** When true, only courses without an assigned instructor. */
+  unassigned?: boolean;
   page?: number;
   limit?: number;
 }

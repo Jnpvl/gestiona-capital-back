@@ -50,11 +50,9 @@ export class CourseAdminController {
 
   async create(req: Request, res: Response, next: NextFunction) {
     try {
+      const scope = getStaffScopeFromRequest(req);
       const input = createCourseSchema.parse(req.body);
-      const result = await courseService.create({
-        ...input,
-        instructorId: req.auth?.accountType === "staff" ? req.auth.sub : undefined,
-      });
+      const result = await courseService.create(input, scope);
       res.status(201).json(result);
     } catch (error) {
       next(error);
@@ -65,15 +63,7 @@ export class CourseAdminController {
     try {
       const scope = getStaffScopeFromRequest(req);
       const input = updateCoursePromotionSchema.parse(req.body);
-      const result = await courseService.updatePromotion(
-        getParamId(req),
-        {
-          ...input,
-          instructorId:
-            req.auth?.accountType === "staff" ? req.auth.sub : undefined,
-        },
-        scope,
-      );
+      const result = await courseService.updatePromotion(getParamId(req), input, scope);
       res.json(result);
     } catch (error) {
       next(error);
@@ -85,6 +75,16 @@ export class CourseAdminController {
       const scope = getStaffScopeFromRequest(req);
       const { sections } = updateCourseContentSchema.parse(req.body);
       const result = await courseService.updateContent(getParamId(req), sections, scope);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async delete(req: Request, res: Response, next: NextFunction) {
+    try {
+      const scope = getStaffScopeFromRequest(req);
+      const result = await courseService.delete(getParamId(req), scope);
       res.json(result);
     } catch (error) {
       next(error);

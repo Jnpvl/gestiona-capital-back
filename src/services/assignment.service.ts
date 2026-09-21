@@ -71,6 +71,8 @@ export class AssignmentService {
       studentId,
       blockId,
       file,
+      // Keep previous attempt files on disk for history; they are purged when
+      // the assignment block (or course content) is removed.
     });
 
     await createAssignmentSubmission({

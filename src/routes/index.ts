@@ -8,14 +8,20 @@ import { courseAdminRoutes } from "./course-admin.routes";
 import { coursePublicRoutes } from "./course-public.routes";
 import { constanciaPublicRoutes } from "./constancia-public.routes";
 import { contactRoutes } from "./contact.routes";
+import { subscribeRoutes } from "./subscribe.routes";
 import { uploadRoutes } from "./upload.routes";
 import { studentCourseRoutes } from "./student-course.routes";
+import { subscriberAdminRoutes } from "./subscriber-admin.routes";
+import { eventPublicRoutes } from "./event-public.routes";
+import { eventAdminRoutes } from "./event-admin.routes";
 
 export const apiRoutes = Router();
 
 apiRoutes.use("/auth", authRoutes);
 apiRoutes.use("/courses", coursePublicRoutes);
+apiRoutes.use("/events", eventPublicRoutes);
 apiRoutes.use("/contact", contactRoutes);
+apiRoutes.use("/subscribe", subscribeRoutes);
 apiRoutes.use("/constancias", constanciaPublicRoutes);
 apiRoutes.use("/student/courses", studentCourseRoutes);
 apiRoutes.use("/admin/students", studentRoutes);
@@ -23,4 +29,6 @@ apiRoutes.use("/admin/companies", companyRoutes);
 apiRoutes.use("/admin/stps", stpsRoutes);
 apiRoutes.use("/admin/staff", staffAdminRoutes);
 apiRoutes.use("/admin/courses", courseAdminRoutes);
+apiRoutes.use("/admin/subscribers", subscriberAdminRoutes);
+apiRoutes.use("/admin/events", eventAdminRoutes);
 apiRoutes.use("/admin/uploads", uploadRoutes);
