@@ -1,5 +1,6 @@
 import { AppError } from "../errors/app-error";
 import { notifySafely, sendStaffWelcomeEmail } from "./notification.service";
+import { deleteManagedUploadsSafe } from "./upload.service";
 import {
   createStaff,
   findStaffByEmail,
@@ -16,6 +17,35 @@ import type {
   ListStaffFilters,
   UpdateStaffInput,
 } from "../types/staff.types";
+
+function mediaPathsToDelete(
+  current: { photo_url: string | null; logo_url: string | null; signature_url: string | null },
+  input: UpdateStaffInput,
+): string[] {
+  const paths: string[] = [];
+  if (
+    input.photoUrl !== undefined &&
+    current.photo_url &&
+    current.photo_url !== (input.photoUrl?.trim() || null)
+  ) {
+    paths.push(current.photo_url);
+  }
+  if (
+    input.logoUrl !== undefined &&
+    current.logo_url &&
+    current.logo_url !== (input.logoUrl?.trim() || null)
+  ) {
+    paths.push(current.logo_url);
+  }
+  if (
+    input.signatureUrl !== undefined &&
+    current.signature_url &&
+    current.signature_url !== (input.signatureUrl?.trim() || null)
+  ) {
+    paths.push(current.signature_url);
+  }
+  return paths;
+}
 
 export class StaffAdminService {
   private assertCanManageTarget(targetRole: string | undefined, scope: StaffScope) {
@@ -85,10 +115,13 @@ export class StaffAdminService {
     }
 
     const { sendAccessEmail, ...data } = input;
+    const obsoleteMedia = mediaPathsToDelete(current, data);
     const staff = await updateStaff(id, data);
     if (!staff) {
       throw new AppError(404, "Miembro del staff no encontrado", "STAFF_NOT_FOUND");
     }
+
+    await deleteManagedUploadsSafe(obsoleteMedia);
 
     if (sendAccessEmail && data.password) {
       await notifySafely(() =>

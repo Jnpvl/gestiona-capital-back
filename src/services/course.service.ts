@@ -1,15 +1,22 @@
 import { AppError } from "../errors/app-error";
+import { deleteCourseUploadTrees, deleteManagedUploadsSafe } from "./upload.service";
 import {
   createCourse,
+  deleteCourseById,
   findCourseById,
   findCourseBySlugPublic,
   findCourseDetailById,
   findCoursesPaginated,
   findFeaturedCourses,
   findPublishedCatalog,
+  listCourseBlockResourceUrls,
   replaceCourseContent,
   updateCoursePromotion,
 } from "../repositories/course.repository";
+import {
+  listAssignmentBlockIdsForCourse,
+  listSubmissionFileUrlsByBlockIds,
+} from "../repositories/assignment.repository";
 import {
   findActiveEnrolledStudents,
   findCourseEnrollments,
@@ -34,6 +41,52 @@ import {
   assertCourseInstructorAccess,
   type StaffScope,
 } from "../shared/auth/staff-scope";
+import { findStaffById } from "../repositories/staff.repository";
+
+async function assertAssignableInstructor(instructorId: string | null | undefined) {
+  if (!instructorId) return;
+
+  const staff = await findStaffById(instructorId);
+  if (!staff || !staff.active) {
+    throw new AppError(
+      400,
+      "El instructor seleccionado no existe o está inactivo",
+      "INVALID_INSTRUCTOR",
+    );
+  }
+  if (staff.role !== "teacher" && staff.role !== "admin") {
+    throw new AppError(
+      400,
+      "Solo puedes asignar el curso a un instructor o administrador activo",
+      "INVALID_INSTRUCTOR_ROLE",
+    );
+  }
+}
+
+function collectResourceUrlsFromSections(sections: SectionInput[]): Set<string> {
+  const urls = new Set<string>();
+  for (const section of sections) {
+    for (const lesson of section.lessons) {
+      for (const block of lesson.blocks) {
+        const url = block.resourceUrl?.trim();
+        if (url) urls.add(url);
+      }
+    }
+  }
+  return urls;
+}
+
+function collectAssignmentBlockIdsFromSections(sections: SectionInput[]): Set<string> {
+  const ids = new Set<string>();
+  for (const section of sections) {
+    for (const lesson of section.lessons) {
+      for (const block of lesson.blocks) {
+        if (block.type === "assignment" && block.id) ids.add(block.id);
+      }
+    }
+  }
+  return ids;
+}
 
 export class CourseService {
   async assertStaffCanAccessCourse(courseId: string, scope: StaffScope) {
@@ -48,7 +101,9 @@ export class CourseService {
   async listAdmin(filters: ListCoursesFilters = {}, scope?: StaffScope) {
     return findCoursesPaginated({
       ...filters,
+      // Teachers are scoped to their own courses; admins may filter freely.
       instructorId: scope?.instructorId ?? filters.instructorId,
+      unassigned: scope?.instructorId ? undefined : filters.unassigned,
     });
   }
 
@@ -61,8 +116,21 @@ export class CourseService {
     return { course };
   }
 
-  async create(input: CreateCourseInput) {
-    const course = await createCourse(input);
+  async create(input: CreateCourseInput, scope: StaffScope) {
+    let instructorId: string | null;
+
+    if (scope.isAdmin) {
+      instructorId = input.instructorId ?? null;
+      await assertAssignableInstructor(instructorId);
+    } else {
+      // Teachers always own the courses they create.
+      instructorId = scope.staffId;
+    }
+
+    const course = await createCourse({
+      ...input,
+      instructorId,
+    });
     return { course };
   }
 
@@ -73,9 +141,43 @@ export class CourseService {
       throw new AppError(404, "Curso no encontrado", "COURSE_NOT_FOUND");
     }
 
-    const course = await updateCoursePromotion(id, input);
+    const promotionInput: UpdateCoursePromotionInput = { ...input };
+    if (scope.isAdmin) {
+      if (promotionInput.instructorId !== undefined) {
+        await assertAssignableInstructor(promotionInput.instructorId);
+      }
+    } else {
+      // Teachers cannot reassign course ownership.
+      delete promotionInput.instructorId;
+    }
+
+    const course = await updateCoursePromotion(id, promotionInput);
     if (!course) {
       throw new AppError(404, "Curso no encontrado", "COURSE_NOT_FOUND");
+    }
+
+    if (
+      input.coverImage !== undefined &&
+      current.cover_image &&
+      current.cover_image !== course.coverImage
+    ) {
+      await deleteManagedUploadsSafe([current.cover_image]);
+    }
+
+    if (
+      input.certificateTemplateUrl !== undefined &&
+      current.certificate_template_url &&
+      current.certificate_template_url !== course.certificateTemplateUrl
+    ) {
+      await deleteManagedUploadsSafe([current.certificate_template_url]);
+    }
+
+    if (
+      input.dc3TemplateUrl !== undefined &&
+      current.dc3_template_url &&
+      current.dc3_template_url !== course.dc3TemplateUrl
+    ) {
+      await deleteManagedUploadsSafe([current.dc3_template_url]);
     }
 
     if (current.status !== "published" && course.status === "published") {
@@ -111,12 +213,53 @@ export class CourseService {
       );
     }
 
+    const previousUrls = await listCourseBlockResourceUrls(id);
+    const previousAssignmentBlockIds = await listAssignmentBlockIdsForCourse(id);
+    const nextAssignmentBlockIds = collectAssignmentBlockIdsFromSections(sections);
+    const removedAssignmentBlockIds = previousAssignmentBlockIds.filter(
+      (blockId) => !nextAssignmentBlockIds.has(blockId),
+    );
+    const submissionUrlsToDelete =
+      await listSubmissionFileUrlsByBlockIds(removedAssignmentBlockIds);
+
     const course = await replaceCourseContent(id, sections);
     if (!course) {
       throw new AppError(404, "Curso no encontrado", "COURSE_NOT_FOUND");
     }
 
+    const nextUrls = collectResourceUrlsFromSections(sections);
+    const removedBlockUrls = previousUrls.filter((url) => !nextUrls.has(url));
+    await deleteManagedUploadsSafe([...removedBlockUrls, ...submissionUrlsToDelete]);
+
     return { course };
+  }
+
+  async delete(id: string, scope: StaffScope) {
+    await this.assertStaffCanAccessCourse(id, scope);
+    const current = await findCourseById(id);
+    if (!current) {
+      throw new AppError(404, "Curso no encontrado", "COURSE_NOT_FOUND");
+    }
+
+    const blockUrls = await listCourseBlockResourceUrls(id);
+    const assignmentBlockIds = await listAssignmentBlockIdsForCourse(id);
+    const submissionUrls = await listSubmissionFileUrlsByBlockIds(assignmentBlockIds);
+
+    const deleted = await deleteCourseById(id);
+    if (!deleted) {
+      throw new AppError(404, "Curso no encontrado", "COURSE_NOT_FOUND");
+    }
+
+    await deleteManagedUploadsSafe([
+      current.cover_image,
+      current.certificate_template_url,
+      current.dc3_template_url,
+      ...blockUrls,
+      ...submissionUrls,
+    ]);
+    await deleteCourseUploadTrees(current.slug);
+
+    return { ok: true as const, id };
   }
 
   async previewCertificate(id: string, scope: StaffScope, _templateUrl?: string) {

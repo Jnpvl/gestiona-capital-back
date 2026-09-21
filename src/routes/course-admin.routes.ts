@@ -28,6 +28,10 @@ courseAdminRoutes.put("/:id/content", ...staffAuth, (req, res, next) =>
   courseAdminController.updateContent(req, res, next),
 );
 
+courseAdminRoutes.delete("/:id", ...staffAuth, (req, res, next) =>
+  courseAdminController.delete(req, res, next),
+);
+
 courseAdminRoutes.get("/:id/assignments", ...staffAuth, (req, res, next) =>
   assignmentController.listForCourse(req, res, next),
 );

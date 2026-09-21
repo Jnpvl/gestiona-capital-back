@@ -3,6 +3,7 @@ import { z } from "zod";
 export const createCourseSchema = z.object({
   title: z.string().min(2, "El título es obligatorio"),
   slug: z.string().optional(),
+  instructorId: z.string().uuid().nullable().optional(),
 });
 
 const participantProfileSchema = z.object({
@@ -47,6 +48,7 @@ export const updateCoursePromotionSchema = z.object({
   location: z.string().nullable().optional(),
   period: z.string().nullable().optional(),
   stpsThematicAreaCode: z.string().nullable().optional(),
+  instructorId: z.string().uuid().nullable().optional(),
 });
 
 export const lessonBlockSchema = z.object({
@@ -80,6 +82,13 @@ export const updateCourseContentSchema = z.object({
 export const listCoursesQuerySchema = z.object({
   search: z.string().optional(),
   status: z.enum(["draft", "published"]).optional(),
+  instructorId: z.string().uuid().optional(),
+  unassigned: z
+    .enum(["true", "false", "1", "0"])
+    .optional()
+    .transform((value) =>
+      value === undefined ? undefined : value === "true" || value === "1",
+    ),
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(50).optional().default(10),
 });
