@@ -4,16 +4,23 @@ import { slugify } from "../shared/utils/slug";
 import type {
   CourseDetail,
   CourseListItem,
+  CourseObjectives,
+  CourseParticipantProfile,
   CoursePublicCard,
   CoursePublicDetail,
   CourseRecord,
   CourseSection,
+  CourseSyllabusUnit,
   CreateCourseInput,
   Lesson,
   ListCoursesFilters,
   PaginatedCoursesResult,
   SectionInput,
   UpdateCoursePromotionInput,
+} from "../types/course.types";
+import {
+  EMPTY_OBJECTIVES,
+  EMPTY_PARTICIPANT_PROFILE,
 } from "../types/course.types";
 
 function mapHighlights(value: unknown): string[] {
@@ -23,10 +30,56 @@ function mapHighlights(value: unknown): string[] {
   return [];
 }
 
+function mapParticipantProfile(value: unknown): CourseParticipantProfile {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ...EMPTY_PARTICIPANT_PROFILE };
+  }
+  const raw = value as Record<string, unknown>;
+  return {
+    psychographics: typeof raw.psychographics === "string" ? raw.psychographics : "",
+    knowledge: typeof raw.knowledge === "string" ? raw.knowledge : "",
+    skills: typeof raw.skills === "string" ? raw.skills : "",
+  };
+}
+
+function mapObjectives(value: unknown): CourseObjectives {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ...EMPTY_OBJECTIVES, items: [] };
+  }
+  const raw = value as Record<string, unknown>;
+  const itemsRaw = Array.isArray(raw.items) ? raw.items : [];
+  return {
+    general: typeof raw.general === "string" ? raw.general : "",
+    items: itemsRaw
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+      .map((item) => ({
+        label: typeof item.label === "string" ? item.label : "",
+        text: typeof item.text === "string" ? item.text : "",
+      }))
+      .filter((item) => item.text.trim().length > 0),
+  };
+}
+
+function mapSyllabus(value: unknown): CourseSyllabusUnit[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    .map((item) => ({
+      title: typeof item.title === "string" ? item.title : "",
+      topics: Array.isArray(item.topics)
+        ? item.topics.filter((topic): topic is string => typeof topic === "string")
+        : [],
+    }))
+    .filter((item) => item.title.trim().length > 0);
+}
+
 function mapCourseRecord(row: CourseRecord): CourseRecord {
   return {
     ...row,
     highlights: mapHighlights(row.highlights),
+    participant_profile: mapParticipantProfile(row.participant_profile),
+    objectives: mapObjectives(row.objectives),
+    syllabus: mapSyllabus(row.syllabus),
   };
 }
 
@@ -164,6 +217,9 @@ async function mapCourseDetail(row: CourseRecord, sections: CourseSection[]): Pr
     duration: row.duration,
     level: row.level,
     highlights: row.highlights,
+    participantProfile: row.participant_profile,
+    objectives: row.objectives,
+    syllabus: row.syllabus,
     status: row.status,
     showInCatalog: row.show_in_catalog,
     featured: row.featured,
@@ -298,6 +354,9 @@ export async function findCourseBySlugPublic(slug: string): Promise<CoursePublic
     ...mapPublicCard(course),
     description: course.description,
     highlights: course.highlights,
+    participantProfile: course.participant_profile,
+    objectives: course.objectives,
+    syllabus: course.syllabus,
   };
 }
 
@@ -372,17 +431,20 @@ export async function updateCoursePromotion(
        duration = $7,
        level = $8,
        highlights = $9::jsonb,
-       status = $10,
-       show_in_catalog = $11,
-       featured = $12,
-       certificate_template_url = $13,
-       dc3_template_url = $14,
-       location = $15,
-       period = $16,
-       instructor_id = $17,
-       stps_thematic_area_code = $18,
+       participant_profile = $10::jsonb,
+       objectives = $11::jsonb,
+       syllabus = $12::jsonb,
+       status = $13,
+       show_in_catalog = $14,
+       featured = $15,
+       certificate_template_url = $16,
+       dc3_template_url = $17,
+       location = $18,
+       period = $19,
+       instructor_id = $20,
+       stps_thematic_area_code = $21,
        updated_at = NOW()
-     WHERE id = $19
+     WHERE id = $22
      RETURNING *`,
     [
       input.title?.trim() ?? current.title,
@@ -394,6 +456,9 @@ export async function updateCoursePromotion(
       input.duration !== undefined ? input.duration : current.duration,
       input.level !== undefined ? input.level : current.level,
       JSON.stringify(input.highlights ?? current.highlights),
+      JSON.stringify(input.participantProfile ?? current.participant_profile),
+      JSON.stringify(input.objectives ?? current.objectives),
+      JSON.stringify(input.syllabus ?? current.syllabus),
       input.status ?? current.status,
       input.showInCatalog ?? current.show_in_catalog,
       input.featured ?? current.featured,

@@ -12,6 +12,38 @@ export type LessonBlockType =
   | "image"
   | "assignment";
 
+export interface CourseParticipantProfile {
+  psychographics: string;
+  knowledge: string;
+  skills: string;
+}
+
+export interface CourseObjectiveItem {
+  label: string;
+  text: string;
+}
+
+export interface CourseObjectives {
+  general: string;
+  items: CourseObjectiveItem[];
+}
+
+export interface CourseSyllabusUnit {
+  title: string;
+  topics: string[];
+}
+
+export const EMPTY_PARTICIPANT_PROFILE: CourseParticipantProfile = {
+  psychographics: "",
+  knowledge: "",
+  skills: "",
+};
+
+export const EMPTY_OBJECTIVES: CourseObjectives = {
+  general: "",
+  items: [],
+};
+
 export interface CourseRecord {
   id: string;
   title: string;
@@ -23,6 +55,9 @@ export interface CourseRecord {
   duration: string | null;
   level: string | null;
   highlights: string[];
+  participant_profile: CourseParticipantProfile;
+  objectives: CourseObjectives;
+  syllabus: CourseSyllabusUnit[];
   status: CourseStatus;
   show_in_catalog: boolean;
   featured: boolean;
@@ -79,6 +114,9 @@ export interface CoursePublicCard {
 export interface CoursePublicDetail extends CoursePublicCard {
   description: string | null;
   highlights: string[];
+  participantProfile: CourseParticipantProfile;
+  objectives: CourseObjectives;
+  syllabus: CourseSyllabusUnit[];
 }
 
 export interface LessonBlock {
@@ -116,6 +154,9 @@ export interface CourseDetail {
   duration: string | null;
   level: string | null;
   highlights: string[];
+  participantProfile: CourseParticipantProfile;
+  objectives: CourseObjectives;
+  syllabus: CourseSyllabusUnit[];
   status: CourseStatus;
   showInCatalog: boolean;
   featured: boolean;
@@ -148,6 +189,9 @@ export interface UpdateCoursePromotionInput {
   duration?: string | null;
   level?: string | null;
   highlights?: string[];
+  participantProfile?: CourseParticipantProfile;
+  objectives?: CourseObjectives;
+  syllabus?: CourseSyllabusUnit[];
   status?: CourseStatus;
   showInCatalog?: boolean;
   featured?: boolean;

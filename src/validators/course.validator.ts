@@ -5,6 +5,27 @@ export const createCourseSchema = z.object({
   slug: z.string().optional(),
 });
 
+const participantProfileSchema = z.object({
+  psychographics: z.string().optional().default(""),
+  knowledge: z.string().optional().default(""),
+  skills: z.string().optional().default(""),
+});
+
+const objectiveItemSchema = z.object({
+  label: z.string().optional().default(""),
+  text: z.string().min(1),
+});
+
+const objectivesSchema = z.object({
+  general: z.string().optional().default(""),
+  items: z.array(objectiveItemSchema).optional().default([]),
+});
+
+const syllabusUnitSchema = z.object({
+  title: z.string().min(1),
+  topics: z.array(z.string()).optional().default([]),
+});
+
 export const updateCoursePromotionSchema = z.object({
   title: z.string().min(2).optional(),
   slug: z.string().optional(),
@@ -15,6 +36,9 @@ export const updateCoursePromotionSchema = z.object({
   duration: z.string().nullable().optional(),
   level: z.string().nullable().optional(),
   highlights: z.array(z.string()).optional(),
+  participantProfile: participantProfileSchema.optional(),
+  objectives: objectivesSchema.optional(),
+  syllabus: z.array(syllabusUnitSchema).optional(),
   status: z.enum(["draft", "published"]).optional(),
   showInCatalog: z.boolean().optional(),
   featured: z.boolean().optional(),
