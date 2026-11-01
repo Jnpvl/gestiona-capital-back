@@ -100,6 +100,7 @@ export const listStudentsQuerySchema = z.object({
     .optional()
     .transform((value) => (value === undefined ? undefined : value === "true")),
   alumnoType: alumnoTypeSchema.optional(),
+  companyId: z.string().uuid("Empresa inválida").optional(),
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(50).optional().default(10),
 });

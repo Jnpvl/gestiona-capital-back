@@ -74,6 +74,8 @@ function mapListItem(row: StudentRecordRow & { courses_count: string }): Student
     firstNames: row.first_names ?? "",
     email: row.email,
     phone: row.phone,
+    curp: row.curp ?? null,
+    currentPosition: row.current_position ?? null,
     companyName: row.company_name ?? null,
     alumnoType: row.alumno_type,
     active: row.active,
@@ -154,13 +156,19 @@ function buildWhereClause(filters: ListStudentsFilters) {
         OR LOWER(s.email) LIKE $${index}
         OR LOWER(COALESCE(s.first_names, '')) LIKE $${index}
         OR LOWER(COALESCE(s.paternal_last_name, '')) LIKE $${index}
-        OR LOWER(COALESCE(s.maternal_last_name, '')) LIKE $${index})`,
+        OR LOWER(COALESCE(s.maternal_last_name, '')) LIKE $${index}
+        OR LOWER(COALESCE(s.curp, '')) LIKE $${index})`,
     );
   }
 
   if (filters.alumnoType) {
     values.push(filters.alumnoType);
     conditions.push(`s.alumno_type = $${values.length}`);
+  }
+
+  if (filters.companyId) {
+    values.push(filters.companyId);
+    conditions.push(`s.company_id = $${values.length}`);
   }
 
   if (filters.instructorId) {

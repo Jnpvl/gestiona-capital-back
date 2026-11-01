@@ -59,6 +59,8 @@ export interface StudentListItem {
   firstNames: string;
   email: string;
   phone: string | null;
+  curp: string | null;
+  currentPosition: string | null;
   companyName: string | null;
   alumnoType: AlumnoType;
   active: boolean;
@@ -226,6 +228,8 @@ export interface ListStudentsFilters {
   search?: string;
   active?: boolean;
   alumnoType?: AlumnoType;
+  /** When set, only students linked to this company. */
+  companyId?: string;
   /** When set, only students created by or enrolled in this instructor's courses. */
   instructorId?: string;
   page?: number;
