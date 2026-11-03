@@ -1,3 +1,4 @@
+import bcrypt from "bcrypt";
 import { pool } from "../config/database";
 import type {
   CompanyDetail,
@@ -33,6 +34,10 @@ function mapDetail(row: CompanyRecord & { students_count: string }): CompanyDeta
     rfc: row.rfc,
     employerRepresentative: row.employer_representative,
     workersRepresentative: row.workers_representative,
+    workersCount: row.workers_count,
+    accessEmail: row.access_email,
+    hasAccess: !!row.access_email && !!row.password_hash,
+    lastLoginAt: row.last_login_at ? row.last_login_at.toISOString() : null,
     studentsCount: Number(row.students_count),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
@@ -132,9 +137,9 @@ export async function createCompany(input: CreateCompanyInput): Promise<CompanyD
   const { rows } = await pool.query<CompanyRecord>(
     `INSERT INTO companies (
        name, name_normalized, rfc,
-       employer_representative, workers_representative
+       employer_representative, workers_representative, workers_count
      )
-     VALUES ($1, $2, $3, $4, $5)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
     [
       trimmedName,
@@ -142,6 +147,7 @@ export async function createCompany(input: CreateCompanyInput): Promise<CompanyD
       input.rfc?.trim().toUpperCase() || null,
       input.employerRepresentative?.trim() || null,
       input.workersRepresentative?.trim() || null,
+      input.workersCount ?? null,
     ],
   );
 
@@ -170,6 +176,7 @@ export async function updateCompany(
          rfc = $3,
          employer_representative = $4,
          workers_representative = $5,
+         workers_count = $7,
          updated_at = NOW()
      WHERE id = $6
      RETURNING id`,
@@ -184,8 +191,48 @@ export async function updateCompany(
         ? input.workersRepresentative?.trim() || null
         : current.workersRepresentative,
       id,
+      input.workersCount !== undefined ? input.workersCount ?? null : current.workersCount,
     ],
   );
 
   return rows[0] ? findCompanyById(rows[0].id) : null;
+}
+
+/** Empresa por correo de acceso (login de empresa). */
+export async function findCompanyByAccessEmail(email: string): Promise<CompanyRecord | null> {
+  const { rows } = await pool.query<CompanyRecord>(
+    "SELECT * FROM companies WHERE LOWER(access_email) = LOWER($1) LIMIT 1",
+    [email.trim()],
+  );
+  return rows[0] ?? null;
+}
+
+export async function findCompanyRecordById(id: string): Promise<CompanyRecord | null> {
+  const { rows } = await pool.query<CompanyRecord>("SELECT * FROM companies WHERE id = $1", [id]);
+  return rows[0] ?? null;
+}
+
+/** Guarda correo de acceso y, si viene, una contraseña nueva (bcrypt, igual que alumnos). */
+export async function setCompanyAccess(
+  id: string,
+  input: { accessEmail: string; password?: string | null },
+): Promise<void> {
+  const hash = input.password ? await bcrypt.hash(input.password, 12) : null;
+  await pool.query(
+    `UPDATE companies
+        SET access_email = LOWER($2),
+            password_hash = COALESCE($3, password_hash),
+            updated_at = NOW()
+      WHERE id = $1`,
+    [id, input.accessEmail.trim(), hash],
+  );
+}
+
+export async function verifyCompanyPassword(company: CompanyRecord, password: string): Promise<boolean> {
+  if (!company.password_hash) return false;
+  return bcrypt.compare(password, company.password_hash);
+}
+
+export async function touchCompanyLogin(id: string): Promise<void> {
+  await pool.query("UPDATE companies SET last_login_at = NOW() WHERE id = $1", [id]);
 }

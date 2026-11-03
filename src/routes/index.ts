@@ -14,6 +14,9 @@ import { studentCourseRoutes } from "./student-course.routes";
 import { subscriberAdminRoutes } from "./subscriber-admin.routes";
 import { eventPublicRoutes } from "./event-public.routes";
 import { eventAdminRoutes } from "./event-admin.routes";
+import { formAdminRoutes } from "./form-admin.routes";
+import { companyPortalRoutes } from "./company-portal.routes";
+import { studentFormRoutes } from "./student-form.routes";
 
 export const apiRoutes = Router();
 
@@ -24,6 +27,7 @@ apiRoutes.use("/contact", contactRoutes);
 apiRoutes.use("/subscribe", subscribeRoutes);
 apiRoutes.use("/constancias", constanciaPublicRoutes);
 apiRoutes.use("/student/courses", studentCourseRoutes);
+apiRoutes.use("/student/forms", studentFormRoutes);
 apiRoutes.use("/admin/students", studentRoutes);
 apiRoutes.use("/admin/companies", companyRoutes);
 apiRoutes.use("/admin/stps", stpsRoutes);
@@ -31,4 +35,6 @@ apiRoutes.use("/admin/staff", staffAdminRoutes);
 apiRoutes.use("/admin/courses", courseAdminRoutes);
 apiRoutes.use("/admin/subscribers", subscriberAdminRoutes);
 apiRoutes.use("/admin/events", eventAdminRoutes);
+apiRoutes.use("/admin/forms", formAdminRoutes);
 apiRoutes.use("/admin/uploads", uploadRoutes);
+apiRoutes.use("/company", companyPortalRoutes);

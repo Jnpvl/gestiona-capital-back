@@ -60,6 +60,17 @@ export async function sendMail(input: SendMailInput): Promise<void> {
     );
   }
 
+  // Desarrollo/pruebas: con MAIL_CAPTURE_DIR no se envía nada; se guarda el correo como JSON.
+  const captureDir = process.env.MAIL_CAPTURE_DIR?.trim();
+  if (captureDir) {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    await fs.mkdir(captureDir, { recursive: true });
+    const file = path.join(captureDir, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`);
+    await fs.writeFile(file, JSON.stringify({ to, subject: input.subject, text: input.text }, null, 2));
+    return;
+  }
+
   const transporter = createTransport();
 
   // Brevo: MAIL_USER es login SMTP; MAIL_FROM debe ser un sender del dominio autenticado.

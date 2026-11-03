@@ -1,3 +1,4 @@
+import { findCompanyByAccessEmail } from "../repositories/company.repository";
 import { AppError } from "../errors/app-error";
 import { findCourseById } from "../repositories/course.repository";
 import {
@@ -68,6 +69,11 @@ export class StudentService {
     if (existing) {
       throw new AppError(409, "Ya existe un estudiante con ese correo", "EMAIL_EXISTS");
     }
+    if (await findCompanyByAccessEmail(input.email)) {
+      throw new AppError(409, "Correo: ya lo usa el acceso de una empresa", "EMAIL_EXISTS", [
+        { field: "email", label: "Correo", message: "ya lo usa el acceso de una empresa" },
+      ]);
+    }
 
     try {
       const student = await createStudent({
@@ -101,6 +107,11 @@ export class StudentService {
       const existing = await findStudentByEmail(input.email);
       if (existing) {
         throw new AppError(409, "Ya existe un estudiante con ese correo", "EMAIL_EXISTS");
+      }
+      if (await findCompanyByAccessEmail(input.email)) {
+        throw new AppError(409, "Correo: ya lo usa el acceso de una empresa", "EMAIL_EXISTS", [
+          { field: "email", label: "Correo", message: "ya lo usa el acceso de una empresa" },
+        ]);
       }
     }
 

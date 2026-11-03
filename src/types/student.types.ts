@@ -42,6 +42,7 @@ export interface StudentRecord {
   created_by_staff_id: string | null;
   created_at: Date;
   updated_at: Date;
+  access_email_sent_at?: Date | null;
 }
 
 export type StudentRecordRow = StudentRecord & {
@@ -66,6 +67,8 @@ export interface StudentListItem {
   active: boolean;
   coursesCount: number;
   createdAt: string;
+  /** Último envío del correo de accesos desde el admin. */
+  accessEmailSentAt: string | null;
 }
 
 export interface StudentDetail {

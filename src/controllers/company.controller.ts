@@ -1,6 +1,12 @@
+import { employeeAccessService } from "../services/employee-access.service";
 import type { NextFunction, Request, Response } from "express";
 import { companyService } from "../services/company.service";
+import { companyEmployeesImportService } from "../services/company-employees-import.service";
+import { getStaffScopeFromRequest } from "../shared/auth/staff-scope";
 import {
+  companyAccessSchema,
+  sendEmployeeAccessSchema,
+  companyEmployeeImportOptionsSchema,
   createCompanySchema,
   listCompaniesQuerySchema,
   updateCompanySchema,
@@ -12,6 +18,42 @@ function getParamId(req: Request): string {
 }
 
 export class CompanyController {
+  async downloadEmployeesTemplate(req: Request, res: Response, next: NextFunction) {
+    try {
+      await companyService.getById(getParamId(req));
+      const buffer = await companyEmployeesImportService.buildTemplate();
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader("Content-Disposition", 'attachment; filename="plantilla-empleados.xlsx"');
+      res.send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async importEmployees(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.file) {
+        res.status(400).json({
+          error: { message: "Sube un archivo Excel (.xlsx)", code: "FILE_REQUIRED" },
+        });
+        return;
+      }
+      const scope = getStaffScopeFromRequest(req);
+      const { sendWelcomeEmail } = companyEmployeeImportOptionsSchema.parse(req.body ?? {});
+      const result = await companyEmployeesImportService.importExcel(
+        getParamId(req),
+        req.file.buffer,
+        { createdByStaffId: scope.staffId, sendWelcomeEmail },
+      );
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async list(req: Request, res: Response, next: NextFunction) {
     try {
       const filters = listCompaniesQuerySchema.parse(req.query);
@@ -51,6 +93,15 @@ export class CompanyController {
     }
   }
 
+  async updateAccess(req: Request, res: Response, next: NextFunction) {
+    try {
+      const input = companyAccessSchema.parse(req.body);
+      res.json(await companyService.updateAccess(getParamId(req), input));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const input = updateCompanySchema.parse(req.body);
@@ -59,6 +110,16 @@ export class CompanyController {
     } catch (error) {
       next(error);
     }
+  }
+}
+
+export async function sendEmployeeAccess(req: Request, res: Response, next: NextFunction) {
+  try {
+    const input = sendEmployeeAccessSchema.parse(req.body ?? {});
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    res.json(await employeeAccessService.send(id, input));
+  } catch (error) {
+    next(error);
   }
 }
 

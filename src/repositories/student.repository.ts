@@ -81,6 +81,7 @@ function mapListItem(row: StudentRecordRow & { courses_count: string }): Student
     active: row.active,
     coursesCount: Number(row.courses_count),
     createdAt: row.created_at.toISOString(),
+    accessEmailSentAt: row.access_email_sent_at ? row.access_email_sent_at.toISOString() : null,
   };
 }
 

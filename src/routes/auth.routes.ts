@@ -1,9 +1,15 @@
 import { Router } from "express";
 import { authController } from "../controllers/auth.controller";
-import { authenticate, requireStaff, requireStudent } from "../middleware/auth.middleware";
+import {
+  authenticate,
+  requireCompany,
+  requireStaff,
+  requireStudent,
+} from "../middleware/auth.middleware";
 
 const staffAuth = [authenticate, requireStaff()];
 const studentAuth = [authenticate, requireStudent()];
+const companyAuth = [authenticate, requireCompany()];
 
 export const authRoutes = Router();
 
@@ -25,4 +31,12 @@ authRoutes.get("/student/me", ...studentAuth, (req, res, next) =>
 
 authRoutes.post("/student/privacy", ...studentAuth, (req, res, next) =>
   authController.studentAcceptPrivacy(req, res, next),
+);
+
+authRoutes.post("/company/login", (req, res, next) =>
+  authController.companyLogin(req, res, next),
+);
+
+authRoutes.get("/company/me", ...companyAuth, (req, res, next) =>
+  authController.companyMe(req, res, next),
 );

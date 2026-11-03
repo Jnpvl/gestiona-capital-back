@@ -29,6 +29,18 @@ export class TokenService {
     });
   }
 
+  signCompanyToken(payload: { id: string; email: string }): string {
+    const tokenPayload: AuthTokenPayload = {
+      sub: payload.id,
+      email: payload.email,
+      accountType: "company",
+    };
+
+    return jwt.sign(tokenPayload, env.jwtSecret, {
+      expiresIn: env.jwtExpiresIn as jwt.SignOptions["expiresIn"],
+    });
+  }
+
   verifyToken(token: string): AuthTokenPayload {
     return jwt.verify(token, env.jwtSecret) as AuthTokenPayload;
   }
