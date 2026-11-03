@@ -100,6 +100,31 @@ export async function sendStudentWelcomeEmail(input: {
   });
 }
 
+export async function sendCompanyWelcomeEmail(input: {
+  name: string;
+  email: string;
+  password: string;
+}): Promise<void> {
+  await sendTemplatedEmail({
+    template: "company-welcome",
+    intendedTo: input.email,
+    subject: "Tus accesos al portal de empresas",
+    greetingName: input.name,
+    data: {
+      kicker: "Acceso empresa",
+      title: "Ya puedes entrar al portal de empresas de Gestiona Capital Humano",
+      highlights: [
+        { label: "Usuario", value: input.email },
+        { label: "Contraseña", value: input.password },
+      ],
+      action: {
+        label: "Entrar como empresa",
+        href: frontendUrl("/empresa/login"),
+      },
+    },
+  });
+}
+
 export async function sendStaffWelcomeEmail(input: {
   name: string;
   email: string;

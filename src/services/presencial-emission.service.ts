@@ -1,6 +1,13 @@
 import ExcelJS from "exceljs";
 import crypto from "crypto";
 import { AppError } from "../errors/app-error";
+import {
+  CURP_REGEX,
+  ageFromCurp,
+  cellText,
+  genderFromCurp,
+  normalizeHeader,
+} from "../shared/utils/excel";
 import { findCourseById } from "../repositories/course.repository";
 import {
   createStudent,
@@ -18,7 +25,6 @@ import {
 } from "./notification.service";
 import type { StudentDetail } from "../types/student.types";
 
-const CURP_REGEX = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[0-9A-Z]\d$/;
 
 export interface PresencialImportRowResult {
   row: number;
@@ -51,17 +57,6 @@ interface ParsedRow {
   phone: string | null;
   startedAt: Date;
   endedAt: Date;
-}
-
-function cellText(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "number") return String(value);
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === "object" && value !== null && "text" in value) {
-    return String((value as { text: unknown }).text ?? "").trim();
-  }
-  return String(value).trim();
 }
 
 function parseExcelDate(value: unknown): Date | null {
@@ -112,36 +107,6 @@ function parseExcelDate(value: unknown): Date | null {
   }
 
   return null;
-}
-
-function genderFromCurp(curp: string): "masculino" | "femenino" {
-  return curp.charAt(10) === "H" ? "masculino" : "femenino";
-}
-
-function ageFromCurp(curp: string): number {
-  const yy = Number(curp.slice(4, 6));
-  const mm = Number(curp.slice(6, 8));
-  const dd = Number(curp.slice(8, 10));
-  const now = new Date();
-  const currentYear = now.getFullYear() % 100;
-  const century = yy > currentYear + 5 ? 1900 : 2000;
-  const birth = new Date(century + yy, mm - 1, dd);
-  let age = now.getFullYear() - birth.getFullYear();
-  const beforeBirthday =
-    now.getMonth() < birth.getMonth() ||
-    (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
-  if (beforeBirthday) age -= 1;
-  if (age < 1 || age > 120) return 25;
-  return age;
-}
-
-function normalizeHeader(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
 }
 
 function mapHeaderIndex(headers: string[]): Record<string, number> {

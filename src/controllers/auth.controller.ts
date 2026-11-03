@@ -1,7 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../errors/app-error";
 import { authService } from "../services/auth.service";
-import { staffLoginSchema, studentLoginSchema } from "../validators/auth.validator";
+import {
+  companyLoginSchema,
+  staffLoginSchema,
+  studentLoginSchema,
+} from "../validators/auth.validator";
 
 export class AuthController {
   async staffLogin(req: Request, res: Response, next: NextFunction) {
@@ -32,6 +36,24 @@ export class AuthController {
       const input = studentLoginSchema.parse(req.body);
       const result = await authService.loginStudent(input);
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async companyLogin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const input = companyLoginSchema.parse(req.body);
+      res.json(await authService.loginCompany(input));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async companyMe(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.auth) throw new AppError(401, "No autorizado", "UNAUTHORIZED");
+      res.json({ user: await authService.getCompanyProfile(req.auth.sub) });
     } catch (error) {
       next(error);
     }

@@ -2,6 +2,8 @@ import type { NextFunction, Request, Response } from "express";
 import multer from "multer";
 import { ZodError } from "zod";
 import { isAppError } from "../errors/app-error";
+import { mapDbError } from "../shared/validation/db-errors";
+import { summarizeFieldErrors, zodFieldErrors } from "../shared/validation/field-errors";
 
 export function errorHandler(
   error: unknown,
@@ -10,10 +12,12 @@ export function errorHandler(
   _next: NextFunction,
 ) {
   if (error instanceof ZodError) {
+    const fields = zodFieldErrors(error);
     res.status(400).json({
       error: {
-        message: "Datos inválidos",
+        message: summarizeFieldErrors(fields) || "Datos inválidos",
         code: "VALIDATION_ERROR",
+        fields,
         details: error.flatten().fieldErrors,
       },
     });
@@ -47,7 +51,16 @@ export function errorHandler(
       error: {
         message: error.message,
         code: error.code,
+        ...(error.fields ? { fields: error.fields } : {}),
       },
+    });
+    return;
+  }
+
+  const db = mapDbError(error);
+  if (db) {
+    res.status(db.status).json({
+      error: { message: db.message, code: db.code, fields: db.fields },
     });
     return;
   }

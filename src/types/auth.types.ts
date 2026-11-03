@@ -1,7 +1,7 @@
 import type { StaffRole } from "./staff.types";
 import type { StudentPublic } from "./student.types";
 
-export type AccountType = "staff" | "student";
+export type AccountType = "staff" | "student" | "company";
 
 export interface AuthTokenPayload {
   sub: string;
@@ -35,6 +35,17 @@ export interface StudentLoginInput {
 export interface StudentLoginResult {
   token: string;
   user: StudentPublic;
+}
+
+export interface CompanyPublic {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface CompanyLoginResult {
+  token: string;
+  user: CompanyPublic;
 }
 
 declare global {

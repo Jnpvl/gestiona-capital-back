@@ -42,6 +42,7 @@ export interface StudentRecord {
   created_by_staff_id: string | null;
   created_at: Date;
   updated_at: Date;
+  access_email_sent_at?: Date | null;
 }
 
 export type StudentRecordRow = StudentRecord & {
@@ -59,11 +60,15 @@ export interface StudentListItem {
   firstNames: string;
   email: string;
   phone: string | null;
+  curp: string | null;
+  currentPosition: string | null;
   companyName: string | null;
   alumnoType: AlumnoType;
   active: boolean;
   coursesCount: number;
   createdAt: string;
+  /** Último envío del correo de accesos desde el admin. */
+  accessEmailSentAt: string | null;
 }
 
 export interface StudentDetail {
@@ -226,6 +231,8 @@ export interface ListStudentsFilters {
   search?: string;
   active?: boolean;
   alumnoType?: AlumnoType;
+  /** When set, only students linked to this company. */
+  companyId?: string;
   /** When set, only students created by or enrolled in this instructor's courses. */
   instructorId?: string;
   page?: number;

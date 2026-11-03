@@ -6,3 +6,5 @@ export const staffLoginSchema = z.object({
 });
 
 export const studentLoginSchema = staffLoginSchema;
+
+export const companyLoginSchema = staffLoginSchema;

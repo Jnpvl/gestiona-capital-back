@@ -59,6 +59,17 @@ export function requireStudent() {
   };
 }
 
+export function requireCompany() {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.auth || req.auth.accountType !== "company") {
+      next(new AppError(403, "Acceso denegado", "FORBIDDEN"));
+      return;
+    }
+
+    next();
+  };
+}
+
 export function requirePrivacyAccepted() {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
