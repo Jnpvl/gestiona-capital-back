@@ -155,13 +155,14 @@ export class FormService {
       partial: profiles.filter(row => !row.completed && Object.keys(row.answers).length > 0).length,
       fields: FORM_DEFINITIONS.nom035_guia5.sections.flatMap(section => section.questions.map(question => {
         type RiskCounts = Record<string, number>;
-        const counts = new Map<string, { count: number; risks: Record<string, RiskCounts> }>();
+        const counts = new Map<string, { count: number; studentIds: string[]; risks: Record<string, RiskCounts> }>();
         for (const profile of profiles) {
           const raw = profile.answers[question.id]?.trim();
           if (!raw) continue;
           const label = question.options?.find(option => option.value === raw)?.label ?? raw;
-          const group = counts.get(label) ?? { count: 0, risks: Object.fromEntries(riskGuides.map(key => [key, { nulo: 0, bajo: 0, medio: 0, alto: 0, muy_alto: 0, sin_resultado: 0 }])) };
+          const group = counts.get(label) ?? { count: 0, studentIds: [] as string[], risks: Object.fromEntries(riskGuides.map(key => [key, { nulo: 0, bajo: 0, medio: 0, alto: 0, muy_alto: 0, sin_resultado: 0 }])) };
           group.count++;
+          group.studentIds.push(profile.student_id);
           for (const key of riskGuides) {
             const result = resultBy.get(`${profile.student_id}:${key}`);
             const status = statuses[profile.student_id]?.find(form => form.formKey === key)?.status;

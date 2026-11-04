@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { pool } from "../config/database";
 import { AppError } from "../errors/app-error";
-import { findStudentById, findStudentsPaginated } from "../repositories/student.repository";
+import { findStudentById, findStudentEnrollments, findStudentsPaginated } from "../repositories/student.repository";
 import { companyService } from "../services/company.service";
 import { formService } from "../services/form.service";
 
@@ -49,6 +49,51 @@ export class CompanyPortalController {
         ({ active: _a, accessEmailSentAt: _s, ...rest }) => rest,
       );
       res.json({ ...result, students });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async employeeDetail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const companyId = companyIdOf(req);
+      const parsed = z.uuid().safeParse(param(req, "studentId"));
+      const student = parsed.success ? await findStudentById(parsed.data) : null;
+      if (!student || student.companyId !== companyId) {
+        throw new AppError(404, "Empleado no encontrado", "EMPLOYEE_NOT_FOUND");
+      }
+      // Lista explícita: nunca expone notas internas ni información de acceso.
+      const employee = {
+        id: student.id,
+        name: student.name,
+        paternalLastName: student.paternalLastName,
+        maternalLastName: student.maternalLastName,
+        firstNames: student.firstNames,
+        email: student.email,
+        phone: student.phone,
+        curp: student.curp,
+        gender: student.gender,
+        age: student.age,
+        residenceLocation: student.residenceLocation,
+        educationLevel: student.educationLevel,
+        professionArea: student.professionArea,
+        educationInstitution: student.educationInstitution,
+        currentlyEmployed: student.currentlyEmployed,
+        jobType: student.jobType,
+        currentPosition: student.currentPosition,
+        industrySector: student.industrySector,
+        yearsExperience: student.yearsExperience,
+        timeInCurrentPosition: student.timeInCurrentPosition,
+        stpsOccupationCode: student.stpsOccupationCode,
+        stpsOccupationName: student.stpsOccupationName,
+        stpsThematicAreaCode: student.stpsThematicAreaCode,
+        stpsThematicAreaName: student.stpsThematicAreaName,
+        companyId: student.companyId,
+        companyName: student.companyName,
+        companyRfc: student.companyRfc,
+      };
+      const enrollments = await findStudentEnrollments(student.id);
+      res.json({ student: employee, enrollments });
     } catch (error) {
       next(error);
     }
