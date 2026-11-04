@@ -2,6 +2,7 @@ import { AppError } from "../errors/app-error";
 import { findCompanyById } from "../repositories/company.repository";
 import { findStudentById } from "../repositories/student.repository";
 import {
+  findCompanyDemographics,
   countCompanyEmployees,
   createAssignment,
   findAssignmentsByCompany,
@@ -109,11 +110,12 @@ export class FormService {
   async companyResults(companyId: string) {
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
-    const [employees, assigned, statuses, completed] = await Promise.all([
+    const [employees, assigned, statuses, completed, demographics] = await Promise.all([
       findCompanyEmployeesBasic(companyId),
       findCompanyAssignedFormKeys(companyId),
       findCompanyEmployeesFormsSummary(companyId),
       findCompanyCompletedResponses(companyId),
+      findCompanyDemographics(companyId),
     ]);
     const resultBy = new Map<string, ReturnType<typeof buildResult>>();
     function buildResult(row: (typeof completed)[number], form: (typeof FORM_DEFINITIONS)[FormKey], s: FormScoreResult) {
@@ -143,9 +145,43 @@ export class FormService {
       }
       resultBy.set(`${row.studentId}:${row.formKey}`, buildResult(row, form, score as FormScoreResult));
     }
+    const employeeIds = new Set(employees.map(e => e.id));
+    const profiles = demographics.filter(row => employeeIds.has(row.student_id));
+    const riskGuides = (["nom035_guia2", "nom035_guia3"] as const).filter(key => assigned.includes(key));
+    const demographicSummary = {
+      riskGuides,
+      total: employees.length,
+      completed: profiles.filter(row => row.completed).length,
+      partial: profiles.filter(row => !row.completed && Object.keys(row.answers).length > 0).length,
+      fields: FORM_DEFINITIONS.nom035_guia5.sections.flatMap(section => section.questions.map(question => {
+        type RiskCounts = Record<string, number>;
+        const counts = new Map<string, { count: number; risks: Record<string, RiskCounts> }>();
+        for (const profile of profiles) {
+          const raw = profile.answers[question.id]?.trim();
+          if (!raw) continue;
+          const label = question.options?.find(option => option.value === raw)?.label ?? raw;
+          const group = counts.get(label) ?? { count: 0, risks: Object.fromEntries(riskGuides.map(key => [key, { nulo: 0, bajo: 0, medio: 0, alto: 0, muy_alto: 0, sin_resultado: 0 }])) };
+          group.count++;
+          for (const key of riskGuides) {
+            const result = resultBy.get(`${profile.student_id}:${key}`);
+            const status = statuses[profile.student_id]?.find(form => form.formKey === key)?.status;
+            const level = status === "completed" ? result?.level : null;
+            group.risks[key][level ?? "sin_resultado"]++;
+          }
+          counts.set(label, group);
+        }
+        const answered = [...counts.values()].reduce((sum, group) => sum + group.count, 0);
+        return {
+          key: question.id, name: question.text.replace(/:$/, ""), answered,
+          groups: [...counts.entries()].map(([name, group]) => ({ name, ...group }))
+            .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "es")),
+        };
+      })),
+    };
     const guides = ["nom035_guia1", "nom035_guia2", "nom035_guia3"] as const;
     return {
       assignedFormKeys: assigned,
+      demographics: demographicSummary,
       employees: employees.map((e) => {
         const list = statuses[e.id] ?? [];
         const statusOf = (k: string) => list.find((f) => f.formKey === k)?.status ?? "not_applied";

@@ -749,3 +749,12 @@ export async function findStudentPendingForms(
     assignedAt: r.created_at.toISOString(),
   }));
 }
+
+/** Fichas demográficas de los empleados vinculados a una empresa. */
+export async function findCompanyDemographics(companyId: string) {
+  const { rows } = await pool.query<{ student_id: string; answers: Record<string, string>; completed: boolean }>(
+    `SELECT student_id, answers, completed FROM employee_guia5_data WHERE company_id = $1`,
+    [companyId],
+  );
+  return rows;
+}
