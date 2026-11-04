@@ -9,6 +9,7 @@ companyPortalRoutes.use(authenticate, requireCompany());
 companyPortalRoutes.get("/profile", (req, res, next) => c.profile(req, res, next));
 companyPortalRoutes.get("/employees", (req, res, next) => c.employees(req, res, next));
 companyPortalRoutes.get("/employees/forms-summary", (req, res, next) => c.formsSummary(req, res, next));
+companyPortalRoutes.get("/employees/:studentId", (req, res, next) => c.employeeDetail(req, res, next));
 companyPortalRoutes.get("/employees/:studentId/forms/:formKey", (req, res, next) =>
   c.employeeForm(req, res, next),
 );
