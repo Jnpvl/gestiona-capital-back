@@ -50,6 +50,10 @@ courseAdminRoutes.patch("/:id/enrollments/:enrollmentId/complete", ...staffAuth,
   courseAdminController.markEnrollmentCompleted(req, res, next),
 );
 
+courseAdminRoutes.post("/:id/enrollments/:enrollmentId/certificate/send", ...staffAuth, (req, res, next) =>
+  courseAdminController.sendEnrollmentCertificate(req, res, next),
+);
+
 courseAdminRoutes.get(
   "/:id/enrollments/:enrollmentId/certificate/dc3",
   ...staffAuth,

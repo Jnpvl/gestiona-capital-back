@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../errors/app-error";
+import { companyFormsImportService } from "../services/company-forms-import.service";
 import { formService } from "../services/form.service";
 import { getStaffScopeFromRequest } from "../shared/auth/staff-scope";
 import { createFormAssignmentSchema, formModeSchema } from "../validators/form.validator";
@@ -10,6 +11,20 @@ function param(req: Request, name: string): string {
 }
 
 export class FormController {
+  async downloadTemplate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const key = param(req, "formKey");
+      const buffer = await companyFormsImportService.template(param(req, "id"), key);
+      res.type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet").attachment(`plantilla-${key}.xlsx`).send(buffer);
+    } catch (error) { next(error); }
+  }
+  async importExcel(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.file) throw new AppError(400, "Selecciona un archivo Excel (.xlsx)", "FILE_REQUIRED");
+      res.json(await companyFormsImportService.import(param(req, "id"), param(req, "formKey"), req.file.buffer, getStaffScopeFromRequest(req).staffId ?? null, req.body.dryRun !== "false"));
+    } catch (error) { next(error); }
+  }
+
   list(_req: Request, res: Response, next: NextFunction) {
     try {
       res.json(formService.listDefinitions());

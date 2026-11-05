@@ -47,6 +47,11 @@ export interface PresencialImportResult {
   rows: PresencialImportRowResult[];
 }
 
+export interface PresencialImportOptions {
+  sendAccessEmail?: boolean;
+  sendCertificateEmail?: boolean;
+}
+
 interface ParsedRow {
   rowNumber: number;
   curp: string;
@@ -288,7 +293,11 @@ export class PresencialEmissionService {
     return Buffer.from(buffer);
   }
 
-  async importExcel(courseId: string, fileBuffer: Buffer): Promise<PresencialImportResult> {
+  async importExcel(
+    courseId: string,
+    fileBuffer: Buffer,
+    options: PresencialImportOptions = {},
+  ): Promise<PresencialImportResult> {
     const course = await findCourseById(courseId);
     if (!course) {
       throw new AppError(404, "Curso no encontrado", "COURSE_NOT_FOUND");
@@ -347,7 +356,7 @@ export class PresencialEmissionService {
         else reusedStudents += 1;
         issuedCertificates += 1;
 
-        if (created && password) {
+        if (options.sendAccessEmail && created && password) {
           await notifySafely(() =>
             sendStudentWelcomeEmail({
               name: student.name,
@@ -356,15 +365,19 @@ export class PresencialEmissionService {
             }),
           );
         }
-        await notifySafely(() =>
-          sendCourseAccessEmail({
-            name: student.name,
-            email: student.email,
-            courseTitle: course.title,
-            courseSlug: course.slug,
-          }),
-        );
-        await notifyEnrollmentCompleted(enrollment.enrollmentId);
+        if (options.sendAccessEmail) {
+          await notifySafely(() =>
+            sendCourseAccessEmail({
+              name: student.name,
+              email: student.email,
+              courseTitle: course.title,
+              courseSlug: course.slug,
+            }),
+          );
+        }
+        if (options.sendCertificateEmail) {
+          await notifyEnrollmentCompleted(enrollment.enrollmentId);
+        }
 
         results.push({
           row: row.rowNumber,

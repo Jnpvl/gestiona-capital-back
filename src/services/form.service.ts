@@ -231,7 +231,7 @@ export class FormService {
      * asStudent: lo contesta el propio empleado (solo guías "self", no completadas).
      * finalize: el empleado envía; exige todas las preguntas visibles contestadas.
      */
-    opts: { asStudent?: boolean; finalize?: boolean } = {},
+    opts: { asStudent?: boolean; finalize?: boolean; onlyIfEmpty?: boolean } = {},
   ) {
     if (!isFormKey(formKey)) throw new AppError(404, "Formulario no encontrado", "FORM_NOT_FOUND");
     const company = await findCompanyById(companyId);
@@ -345,7 +345,8 @@ export class FormService {
       }
       // El empleado solo completa al enviar; el admin completa en cuanto están todas.
       const completes = opts.asStudent ? !!opts.finalize && complete : complete;
-      await saveFormResponse({
+      const saved = await saveFormResponse({
+        onlyIfEmpty: opts.onlyIfEmpty,
         assignmentId: target.assignmentId,
         studentId,
         formKey,
@@ -353,6 +354,7 @@ export class FormService {
         status: completes ? "completed" : Object.keys(answers).length > 0 ? "in_progress" : "pending",
         score: completes ? scoreForm(form, answers) : null,
       });
+      if (opts.onlyIfEmpty && !saved) throw new AppError(409, "La evaluación ya tiene respuestas; no se sobrescribió", "RESPONSE_EXISTS");
       if (opts.asStudent) {
         return { formKey, answers, status: completes ? "completed" : "in_progress", updatedAt: null };
       }
