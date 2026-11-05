@@ -389,8 +389,9 @@ export async function saveFormResponse(input: {
   answers: Record<string, string>;
   status: "pending" | "in_progress" | "completed";
   score: unknown | null;
-}): Promise<void> {
-  await pool.query(
+  onlyIfEmpty?: boolean;
+}): Promise<boolean> {
+  const result = await pool.query(
     `INSERT INTO form_responses
        (assignment_id, student_id, form_key, answers, status, score, started_at, completed_at)
      VALUES ($1, $2, $3, $4::jsonb, $5::varchar, $6::jsonb,
@@ -403,7 +404,8 @@ export async function saveFormResponse(input: {
        started_at = COALESCE(form_responses.started_at, EXCLUDED.started_at),
        completed_at = CASE WHEN EXCLUDED.status = 'completed'
                            THEN COALESCE(form_responses.completed_at, NOW()) ELSE NULL END,
-       updated_at = NOW()`,
+       updated_at = NOW()
+     WHERE NOT $7::boolean OR form_responses.answers = '{}'::jsonb`,
     [
       input.assignmentId,
       input.studentId,
@@ -411,8 +413,10 @@ export async function saveFormResponse(input: {
       JSON.stringify(input.answers),
       input.status,
       input.score == null ? null : JSON.stringify(input.score),
+      input.onlyIfEmpty ?? false,
     ],
   );
+  return (result.rowCount ?? 0) > 0;
 }
 
 export interface CompanyFormResultRow {

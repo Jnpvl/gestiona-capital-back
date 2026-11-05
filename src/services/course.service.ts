@@ -328,6 +328,26 @@ export class CourseService {
     }
   }
 
+  async sendEnrollmentCertificate(courseId: string, enrollmentId: string, scope: StaffScope) {
+    await this.assertStaffCanAccessCourse(courseId, scope);
+    const enrollments = await findCourseEnrollments(courseId);
+    const enrollment = enrollments.find((item) => item.id === enrollmentId);
+
+    if (!enrollment) {
+      throw new AppError(404, "Inscripción no encontrada", "ENROLLMENT_NOT_FOUND");
+    }
+    if (!enrollment.canDownloadCertificate) {
+      throw new AppError(
+        400,
+        "La constancia aún no está disponible para este alumno",
+        "CERTIFICATE_NOT_AVAILABLE",
+      );
+    }
+
+    await notifyEnrollmentCompleted(enrollmentId);
+    return { ok: true as const };
+  }
+
   async listPublic() {
     const courses = await findPublishedCatalog();
     return { courses };

@@ -26,6 +26,10 @@ function getParamSlug(req: Request): string {
   return Array.isArray(slug) ? slug[0] : slug;
 }
 
+function formBoolean(value: unknown): boolean {
+  return value === true || value === "true" || value === "1";
+}
+
 export class CourseAdminController {
   async list(req: Request, res: Response, next: NextFunction) {
     try {
@@ -169,6 +173,20 @@ export class CourseAdminController {
     }
   }
 
+  async sendEnrollmentCertificate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const scope = getStaffScopeFromRequest(req);
+      const result = await courseService.sendEnrollmentCertificate(
+        getParamId(req),
+        getEnrollmentId(req),
+        scope,
+      );
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async downloadEnrollmentDc3(req: Request, res: Response, next: NextFunction) {
     try {
       const scope = getStaffScopeFromRequest(req);
@@ -249,6 +267,10 @@ export class CourseAdminController {
       const result = await presencialEmissionService.importExcel(
         getParamId(req),
         req.file.buffer,
+        {
+          sendAccessEmail: formBoolean(req.body?.sendAccessEmail),
+          sendCertificateEmail: formBoolean(req.body?.sendCertificateEmail),
+        },
       );
       res.json(result);
     } catch (error) {

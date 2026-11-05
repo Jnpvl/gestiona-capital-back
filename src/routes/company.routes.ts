@@ -77,3 +77,6 @@ companyRoutes.delete("/:id/forms/assignments/:formKey", ...staffAuth, (req, res,
 companyRoutes.post("/:id/forms/assignments", ...staffAuth, (req, res, next) =>
   formController.assign(req, res, next),
 );
+
+companyRoutes.get("/:id/forms/:formKey/template", authenticate, requireStaff("admin"), (req, res, next) => formController.downloadTemplate(req, res, next));
+companyRoutes.post("/:id/forms/:formKey/import", authenticate, requireStaff("admin"), uploadMiddleware, (req, res, next) => formController.importExcel(req, res, next));
