@@ -308,6 +308,19 @@ export class CourseService {
   async markEnrollmentCompleted(courseId: string, enrollmentId: string, scope: StaffScope) {
     await this.assertStaffCanAccessCourse(courseId, scope);
 
+    const enrollmentsBefore = await findCourseEnrollments(courseId);
+    const target = enrollmentsBefore.find((item) => item.id === enrollmentId);
+    if (!target) {
+      throw new AppError(404, "Inscripción no encontrada", "ENROLLMENT_NOT_FOUND");
+    }
+    if (target.deliveryMode !== "presencial") {
+      throw new AppError(
+        400,
+        "Solo puedes marcar como terminado los cursos presenciales",
+        "ENROLLMENT_NOT_PRESENCIAL",
+      );
+    }
+
     try {
       const updated = await markEnrollmentCompleted(enrollmentId, { courseId });
       const enrollments = await findCourseEnrollments(courseId);

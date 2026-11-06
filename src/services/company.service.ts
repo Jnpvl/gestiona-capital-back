@@ -13,7 +13,11 @@ import {
 } from "../repositories/company.repository";
 import { findCourseById } from "../repositories/course.repository";
 import { findStaffByEmail } from "../repositories/staff.repository";
-import { assignCourseToStudent, findStudentByEmail } from "../repositories/student.repository";
+import {
+  assignCourseToStudent,
+  findCourseEnrollments,
+  findStudentByEmail,
+} from "../repositories/student.repository";
 import type { EnrollmentDeliveryMode } from "../types/student.types";
 import { notifySafely, sendCompanyWelcomeEmail, sendCourseAccessEmail } from "./notification.service";
 import type {
@@ -125,6 +129,61 @@ export class CompanyService {
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
     const courses = await findCompanyCourseSummaries(companyId);
     return { companyId, courses };
+  }
+
+  /** Detalle de un curso en la empresa: inscritos con empresa y empleados que faltan. */
+  async getCourseDetail(companyId: string, courseId: string) {
+    const company = await findCompanyById(companyId);
+    if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
+
+    const course = await findCourseById(courseId);
+    if (!course) throw new AppError(404, "Curso no encontrado", "COURSE_NOT_FOUND");
+
+    const [enrollments, employees, summaries] = await Promise.all([
+      findCourseEnrollments(courseId, { companyId, viaCompanyOnly: true }),
+      findCompanyActiveEmployeesForCourses(companyId),
+      findCompanyCourseSummaries(companyId),
+    ]);
+    const summary = summaries.find((item) => item.courseId === courseId);
+    if (!summary && enrollments.length === 0) {
+      throw new AppError(
+        404,
+        "Este curso no tiene asignaciones con empresa en esta empresa",
+        "COMPANY_COURSE_NOT_FOUND",
+      );
+    }
+
+    const enrolledIds = new Set(enrollments.map((item) => item.studentId));
+    const missing = employees
+      .filter((employee) => !enrolledIds.has(employee.id))
+      .map((employee) => ({
+        studentId: employee.id,
+        name: employee.name,
+        email: employee.email,
+        reason: !employee.curp?.trim()
+          ? "Sin CURP"
+          : !employee.stpsOccupationCode
+            ? "Sin puesto STPS"
+            : "Sin asignar",
+      }));
+
+    return {
+      companyId,
+      course: {
+        id: course.id,
+        title: course.title,
+        slug: course.slug,
+        activeCount: summary?.activeCount ?? enrollments.length,
+        completedCount:
+          summary?.completedCount ?? enrollments.filter((item) => item.completed).length,
+        employeesTotal: summary?.employeesTotal ?? employees.length,
+        deliveryModes: summary?.deliveryModes ?? [
+          ...new Set(enrollments.map((item) => item.deliveryMode)),
+        ],
+      },
+      enrollments,
+      missing,
+    };
   }
 
   /**

@@ -305,6 +305,13 @@ export class StudentService {
     if (!target) {
       throw new AppError(404, "Inscripción no encontrada", "ENROLLMENT_NOT_FOUND");
     }
+    if (target.deliveryMode !== "presencial") {
+      throw new AppError(
+        400,
+        "Solo puedes marcar como terminado los cursos presenciales",
+        "ENROLLMENT_NOT_PRESENCIAL",
+      );
+    }
 
     const course = await findCourseById(target.courseId);
     if (!course) {

@@ -91,6 +91,8 @@ export const companyEmployeeImportRowSchema = z.object({
   email: z.string().trim().toLowerCase().email("Correo inválido o vacío"),
   phone: z.string().trim().nullable(),
   currentPosition: z.string().trim().nullable(),
+  /** Opcional: código del catálogo STPS (para DC3 / cursos con empresa). */
+  stpsOccupationCode: z.string().trim().nullable(),
 });
 
 export type CompanyEmployeeImportRow = z.infer<typeof companyEmployeeImportRowSchema>;
