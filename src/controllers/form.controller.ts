@@ -3,7 +3,11 @@ import { AppError } from "../errors/app-error";
 import { companyFormsImportService } from "../services/company-forms-import.service";
 import { formService } from "../services/form.service";
 import { getStaffScopeFromRequest } from "../shared/auth/staff-scope";
-import { createFormAssignmentSchema, formModeSchema } from "../validators/form.validator";
+import {
+  createFormAssignmentSchema,
+  formModeSchema,
+  parseEvaluationYearQuery,
+} from "../validators/form.validator";
 
 function param(req: Request, name: string): string {
   const v = req.params[name];
@@ -21,7 +25,19 @@ export class FormController {
   async importExcel(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.file) throw new AppError(400, "Selecciona un archivo Excel (.xlsx)", "FILE_REQUIRED");
-      res.json(await companyFormsImportService.import(param(req, "id"), param(req, "formKey"), req.file.buffer, getStaffScopeFromRequest(req).staffId ?? null, req.body.dryRun !== "false"));
+      const year =
+        parseEvaluationYearQuery(req.body?.evaluationYear) ??
+        parseEvaluationYearQuery(req.query.year);
+      res.json(
+        await companyFormsImportService.import(
+          param(req, "id"),
+          param(req, "formKey"),
+          req.file.buffer,
+          getStaffScopeFromRequest(req).staffId ?? null,
+          req.body.dryRun !== "false",
+          year,
+        ),
+      );
     } catch (error) { next(error); }
   }
 
@@ -43,7 +59,7 @@ export class FormController {
 
   async companyForms(req: Request, res: Response, next: NextFunction) {
     try {
-      res.json(await formService.getCompanyForms(param(req, "id")));
+      res.json(await formService.getCompanyForms(param(req, "id"), parseEvaluationYearQuery(req.query.year)));
     } catch (error) {
       next(error);
     }
@@ -54,7 +70,13 @@ export class FormController {
       const raw = typeof req.query.studentIds === "string" ? req.query.studentIds : "";
       const uuid = /^[0-9a-f-]{36}$/i;
       const ids = raw.split(",").map((s) => s.trim()).filter((s) => uuid.test(s));
-      res.json(await formService.employeesFormsSummary(param(req, "id"), ids));
+      res.json(
+        await formService.employeesFormsSummary(
+          param(req, "id"),
+          ids,
+          parseEvaluationYearQuery(req.query.year),
+        ),
+      );
     } catch (error) {
       next(error);
     }
@@ -62,7 +84,7 @@ export class FormController {
 
   async companyResults(req: Request, res: Response, next: NextFunction) {
     try {
-      res.json(await formService.companyResults(param(req, "id")));
+      res.json(await formService.companyResults(param(req, "id"), parseEvaluationYearQuery(req.query.year)));
     } catch (error) {
       next(error);
     }
@@ -108,7 +130,14 @@ export class FormController {
   async setMode(req: Request, res: Response, next: NextFunction) {
     try {
       const { mode } = formModeSchema.parse(req.body);
-      res.json(await formService.setMode(param(req, "id"), param(req, "formKey"), mode));
+      res.json(
+        await formService.setMode(
+          param(req, "id"),
+          param(req, "formKey"),
+          mode,
+          parseEvaluationYearQuery(req.query.year),
+        ),
+      );
     } catch (error) {
       next(error);
     }
@@ -116,7 +145,13 @@ export class FormController {
 
   async unassign(req: Request, res: Response, next: NextFunction) {
     try {
-      res.json(await formService.unassign(param(req, "id"), param(req, "formKey")));
+      res.json(
+        await formService.unassign(
+          param(req, "id"),
+          param(req, "formKey"),
+          parseEvaluationYearQuery(req.query.year),
+        ),
+      );
     } catch (error) {
       next(error);
     }

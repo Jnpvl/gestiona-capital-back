@@ -58,6 +58,14 @@ companyRoutes.post("/:id/employees/import", ...staffAuth, uploadMiddleware, (req
   companyController.importEmployees(req, res, next),
 );
 
+companyRoutes.get("/:id/courses", ...staffAuth, (req, res, next) =>
+  companyController.listCourses(req, res, next),
+);
+
+companyRoutes.post("/:id/courses/assignments", ...staffAuth, (req, res, next) =>
+  companyController.assignCourse(req, res, next),
+);
+
 companyRoutes.get("/:id/forms/results", ...staffAuth, (req, res, next) =>
   formController.companyResults(req, res, next),
 );

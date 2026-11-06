@@ -18,7 +18,8 @@ export interface ConstanciaPdfData {
   issuedAt: Date;
   instructorName: string;
   instructorSpecialty: string;
-  instructorLicense: string;
+  instructorRenapConocer: string | null;
+  instructorLicense: string | null;
   instructorPhotoUrl: string | null;
   instructorLogoUrl: string | null;
   instructorSignatureUrl: string | null;
@@ -49,8 +50,8 @@ function resolveInstructorFields(instructor?: CourseInstructorSnapshot | null) {
       instructor?.professionalArea?.trim() ||
       instructor?.career?.trim() ||
       "Ocupación o especialidad",
-    instructorLicense:
-      instructor?.professionalLicense?.trim() || "Cédula Profesional:",
+    instructorRenapConocer: instructor?.renapConocer?.trim() || null,
+    instructorLicense: instructor?.professionalLicense?.trim() || null,
     instructorPhotoUrl: instructor?.photoUrl?.trim() || null,
     instructorLogoUrl: instructor?.logoUrl?.trim() || null,
     instructorSignatureUrl: instructor?.signatureUrl?.trim() || null,

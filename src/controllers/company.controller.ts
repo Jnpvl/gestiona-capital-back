@@ -4,6 +4,7 @@ import { companyService } from "../services/company.service";
 import { companyEmployeesImportService } from "../services/company-employees-import.service";
 import { getStaffScopeFromRequest } from "../shared/auth/staff-scope";
 import {
+  assignCompanyCourseSchema,
   companyAccessSchema,
   sendEmployeeAccessSchema,
   companyEmployeeImportOptionsSchema,
@@ -107,6 +108,23 @@ export class CompanyController {
       const input = updateCompanySchema.parse(req.body);
       const result = await companyService.update(getParamId(req), input);
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async listCourses(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(await companyService.listCourses(getParamId(req)));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async assignCourse(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { courseId, deliveryMode } = assignCompanyCourseSchema.parse(req.body);
+      res.status(201).json(await companyService.assignCourse(getParamId(req), courseId, deliveryMode));
     } catch (error) {
       next(error);
     }

@@ -221,21 +221,24 @@ export class StudentService {
     }
 
     try {
-      const enrollment = await assignCourseToStudent(
+      const { enrollment, outcome } = await assignCourseToStudent(
         studentId,
         courseId,
         enrolledViaCompany,
         deliveryMode,
       );
-      await notifySafely(() =>
-        sendCourseAccessEmail({
-          name: student.name,
-          email: student.email,
-          courseTitle: enrollment.courseTitle,
-          courseSlug: enrollment.courseSlug,
-        }),
-      );
-      return { enrollment };
+      // Si solo se cambió particular → empresa, ya tenía acceso; no reenviar correo.
+      if (outcome !== "upgraded_to_company") {
+        await notifySafely(() =>
+          sendCourseAccessEmail({
+            name: student.name,
+            email: student.email,
+            courseTitle: enrollment.courseTitle,
+            courseSlug: enrollment.courseSlug,
+          }),
+        );
+      }
+      return { enrollment, upgradedFromParticular: outcome === "upgraded_to_company" };
     } catch (error) {
       if (!(error instanceof Error)) throw error;
 

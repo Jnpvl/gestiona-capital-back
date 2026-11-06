@@ -5,6 +5,12 @@ export const formKeySchema = z.enum(FORM_KEYS as [FormKey, ...FormKey[]], {
   message: "Formulario no válido",
 });
 
+const evaluationYearSchema = z.coerce
+  .number()
+  .int("Año de evaluación no válido")
+  .min(2000, "Año de evaluación no válido")
+  .max(2100, "Año de evaluación no válido");
+
 export const createFormAssignmentSchema = z.object({
   formKeys: z
     .array(
@@ -17,8 +23,16 @@ export const createFormAssignmentSchema = z.object({
   modes: z
     .record(z.string(), z.enum(["admin_applied", "self"], { message: "Modo no válido" }))
     .optional(),
+  evaluationYear: evaluationYearSchema.optional(),
   dueAt: z.coerce.date().optional().nullable(),
 });
+
+/** Query ?year=2026 para dashboard / formularios por año de evaluación. */
+export function parseEvaluationYearQuery(raw: unknown): number | undefined {
+  if (raw == null || raw === "") return undefined;
+  const parsed = evaluationYearSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
 
 export const formModeSchema = z.object({
   mode: z.enum(["admin_applied", "self"], { message: "Modo no válido" }),
