@@ -47,9 +47,13 @@ export const CONSTANCIA_LAYOUT = {
     maxHeightRatio: 0.055,
     maxWidthRatio: 0.24,
   },
-  qr: { top: 70.5, minSizeRatio: 0.16, rightRatio: 0.78 },
+  /**
+   * QR right edge aligns with content right (same as top logo).
+   * When instructor logo exists, QR bottom aligns with that logo bottom.
+   */
+  /** Right edge matches top Gestiona logo (~0.934 of template width). */
+  qr: { top: 70.5, minSizeRatio: 0.15, rightEdgeRatio: 0.934 },
   folio: { top: 88.5, fontSize: 13 },
-  folioRightRatio: 0.7,
   disclaimer: { top: 94.0, fontSize: 11 },
 } as const;
 
