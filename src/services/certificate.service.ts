@@ -781,6 +781,7 @@ export async function generateConstanciaPdf(
   }
 
   const instructorLogo = await embedLocalImage(pdfDoc, data.instructorLogoUrl);
+  let instructorLogoBottomY: number | null = null;
   if (instructorLogo) {
     const maxH = height * CONSTANCIA_LAYOUT.instructorLogo.maxHeightRatio;
     const maxW = width * CONSTANCIA_LAYOUT.instructorLogo.maxWidthRatio;
@@ -813,9 +814,10 @@ export async function generateConstanciaPdf(
     }
 
     const logoTopY = height * (1 - logoTopPct / 100);
+    instructorLogoBottomY = logoTopY - logoH;
     page.drawImage(instructorLogo, {
       x: leftX,
-      y: logoTopY - logoH,
+      y: instructorLogoBottomY,
       width: logoW,
       height: logoH,
     });
@@ -825,10 +827,15 @@ export async function generateConstanciaPdf(
   const folioSize = size(CONSTANCIA_LAYOUT.folio.fontSize);
   const folioWidth = fontRegular.widthOfTextAtSize(sanitizePdfText(folioText), folioSize);
   const qrSize = Math.max(folioWidth * 1.05, width * CONSTANCIA_LAYOUT.qr.minSizeRatio);
-  const qrCenterX = width * CONSTANCIA_LAYOUT.qr.rightRatio;
-  const qrX = qrCenterX - qrSize / 2;
-  const qrTopY = height * (1 - CONSTANCIA_LAYOUT.qr.top / 100);
-  const qrY = qrTopY - qrSize;
+  // Right edge flush with content / top logo; bottom flush with instructor logo when present.
+  const contentRightX = width * CONSTANCIA_LAYOUT.qr.rightEdgeRatio;
+  const qrX = contentRightX - qrSize;
+  const qrCenterX = qrX + qrSize / 2;
+  const qrTopYFallback = height * (1 - CONSTANCIA_LAYOUT.qr.top / 100);
+  const qrY =
+    instructorLogoBottomY != null
+      ? instructorLogoBottomY
+      : qrTopYFallback - qrSize;
   const qrPng = await QRCode.toBuffer(
     buildConstanciaQrPayload(data.certificateNumber, env.frontendUrl),
     {
