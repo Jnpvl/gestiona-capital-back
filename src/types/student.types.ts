@@ -62,6 +62,8 @@ export interface StudentListItem {
   phone: string | null;
   curp: string | null;
   currentPosition: string | null;
+  stpsOccupationCode: string | null;
+  stpsOccupationName: string | null;
   companyName: string | null;
   alumnoType: AlumnoType;
   active: boolean;

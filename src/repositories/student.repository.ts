@@ -76,6 +76,8 @@ function mapListItem(row: StudentRecordRow & { courses_count: string }): Student
     phone: row.phone,
     curp: row.curp ?? null,
     currentPosition: row.current_position ?? null,
+    stpsOccupationCode: row.stps_occupation_code ?? null,
+    stpsOccupationName: row.stps_occupation_name ?? null,
     companyName: row.company_name ?? null,
     alumnoType: row.alumno_type,
     active: row.active,
@@ -213,12 +215,14 @@ export async function findStudentsPaginated(
   const { rows } = await pool.query<StudentRecordRow & { courses_count: string }>(
     `SELECT s.*,
             co.name AS company_name,
+            occ.name AS stps_occupation_name,
             COUNT(e.id) FILTER (WHERE e.status = 'active') AS courses_count
      FROM students s
      LEFT JOIN companies co ON co.id = s.company_id
+     LEFT JOIN stps_occupations occ ON occ.code = s.stps_occupation_code
      LEFT JOIN enrollments e ON e.student_id = s.id
      ${where}
-     GROUP BY s.id, co.name
+     GROUP BY s.id, co.name, occ.name
      ORDER BY s.created_at DESC
      LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
     listValues,
@@ -803,7 +807,10 @@ export async function findActiveStudentCourses(
 
 export async function findCourseEnrollments(
   courseId: string,
+  options?: { companyId?: string; viaCompanyOnly?: boolean },
 ): Promise<CourseEnrollmentListItem[]> {
+  const companyId = options?.companyId ?? null;
+  const viaCompanyOnly = options?.viaCompanyOnly ?? false;
   const { rows } = await pool.query<{
     id: string;
     student_id: string;
@@ -860,9 +867,11 @@ export async function findCourseEnrollments(
        ON bp_exam.enrollment_id = e.id AND bp_exam.block_id = final_exam.block_id
      WHERE e.course_id = $1
        AND e.status = 'active'
+       AND ($2::uuid IS NULL OR s.company_id = $2)
+       AND (NOT $3::boolean OR e.enrolled_via_company = TRUE)
      GROUP BY e.id, s.id, c.id, ep.certificate_number
      ORDER BY e.enrolled_at DESC`,
-    [courseId],
+    [courseId, companyId, viaCompanyOnly],
   );
 
   const formatShortDate = (date: Date) =>

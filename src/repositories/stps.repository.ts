@@ -75,6 +75,14 @@ export async function listStpsThematicAreas(
   }));
 }
 
+/** Catálogo completo para plantillas Excel (código + nombre). */
+export async function listAllStpsOccupations(): Promise<{ code: string; name: string }[]> {
+  const { rows } = await pool.query<{ code: string; name: string }>(
+    `SELECT code, name FROM stps_occupations ORDER BY code ASC`,
+  );
+  return rows;
+}
+
 export async function findStpsOccupationByCode(
   code: string,
 ): Promise<StpsOccupationItem | null> {

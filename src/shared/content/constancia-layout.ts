@@ -18,8 +18,8 @@ export const CONSTANCIA_COPY = {
  * Font sizes are design points (scaled to template width).
  */
 export const CONSTANCIA_LAYOUT = {
-  leftRatio: 0.18,
-  contentWidthRatio: 0.7,
+  leftRatio: 0.21,
+  contentWidthRatio: 0.67,
   otorgaA: { top: 17.8, fontSize: 17 },
   studentName: { top: 21.6, fontSize: 30 },
   curpLabel: { top: 28.2, fontSize: 16 },
@@ -42,13 +42,15 @@ export const CONSTANCIA_LAYOUT = {
   instructorLogo: {
     gapAfterCredentials: 1.4,
     fallbackTop: 81.8,
-    maxHeightRatio: 0.08,
-    maxWidthRatio: 0.28,
+    /** Keep logo bottom above the disclaimer with this gap (% from page top). */
+    gapBeforeDisclaimer: 1.8,
+    maxHeightRatio: 0.055,
+    maxWidthRatio: 0.24,
   },
   qr: { top: 70.5, minSizeRatio: 0.16, rightRatio: 0.78 },
   folio: { top: 88.5, fontSize: 13 },
   folioRightRatio: 0.7,
-  disclaimer: { top: 93.2, fontSize: 11 },
+  disclaimer: { top: 94.0, fontSize: 11 },
 } as const;
 
 /** Paleta oficial: azul, gris, dorado (RGB 0–1 para pdf-lib). */

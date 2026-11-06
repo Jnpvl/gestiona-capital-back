@@ -785,12 +785,33 @@ export async function generateConstanciaPdf(
     const maxH = height * CONSTANCIA_LAYOUT.instructorLogo.maxHeightRatio;
     const maxW = width * CONSTANCIA_LAYOUT.instructorLogo.maxWidthRatio;
     const logoScale = Math.min(maxH / instructorLogo.height, maxW / instructorLogo.width);
-    const logoW = instructorLogo.width * logoScale;
-    const logoH = instructorLogo.height * logoScale;
+    let logoW = instructorLogo.width * logoScale;
+    let logoH = instructorLogo.height * logoScale;
     const hasCredentials = Boolean(data.instructorRenapConocer || data.instructorLicense);
-    const logoTopPct = hasCredentials
+    let logoTopPct = hasCredentials
       ? nextCredentialTop + CONSTANCIA_LAYOUT.instructorLogo.gapAfterCredentials
       : CONSTANCIA_LAYOUT.instructorLogo.fallbackTop;
+
+    // Never let the logo collide with the disclaimer line.
+    const disclaimerCeilingPct =
+      CONSTANCIA_LAYOUT.disclaimer.top - CONSTANCIA_LAYOUT.instructorLogo.gapBeforeDisclaimer;
+    let logoHeightPct = (logoH / height) * 100;
+    if (logoTopPct + logoHeightPct > disclaimerCeilingPct) {
+      const availablePct = Math.max(disclaimerCeilingPct - logoTopPct, 1.5);
+      const shrink = availablePct / logoHeightPct;
+      if (shrink < 1) {
+        logoH *= shrink;
+        logoW *= shrink;
+        logoHeightPct = (logoH / height) * 100;
+      }
+      if (logoTopPct + logoHeightPct > disclaimerCeilingPct) {
+        logoTopPct = Math.max(
+          CONSTANCIA_LAYOUT.instructorSpecialty.top + 3,
+          disclaimerCeilingPct - logoHeightPct,
+        );
+      }
+    }
+
     const logoTopY = height * (1 - logoTopPct / 100);
     page.drawImage(instructorLogo, {
       x: leftX,

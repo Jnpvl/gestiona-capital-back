@@ -121,6 +121,15 @@ export class CompanyController {
     }
   }
 
+  async getCourseDetail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const courseId = Array.isArray(req.params.courseId) ? req.params.courseId[0] : req.params.courseId;
+      res.json(await companyService.getCourseDetail(getParamId(req), courseId));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async assignCourse(req: Request, res: Response, next: NextFunction) {
     try {
       const { courseId, deliveryMode } = assignCompanyCourseSchema.parse(req.body);

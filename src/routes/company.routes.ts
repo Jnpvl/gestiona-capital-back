@@ -62,6 +62,10 @@ companyRoutes.get("/:id/courses", ...staffAuth, (req, res, next) =>
   companyController.listCourses(req, res, next),
 );
 
+companyRoutes.get("/:id/courses/:courseId", ...staffAuth, (req, res, next) =>
+  companyController.getCourseDetail(req, res, next),
+);
+
 companyRoutes.post("/:id/courses/assignments", ...staffAuth, (req, res, next) =>
   companyController.assignCourse(req, res, next),
 );
