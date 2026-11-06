@@ -5,7 +5,8 @@ export const CONSTANCIA_COPY = {
   durationLabel: "Duración:",
   modalityLabel: "Modalidad:",
   periodLabel: "Periodo:",
-  licenseLabel: "Cédula Profesional:",
+  renapLabel: "RENAP CONOCER:",
+  licenseLabel: "CEDULA PROFESIONAL:",
   folioLabel: "Folio:",
   disclaimer:
     "La presente constancia se expide como evidencia de la capacitación recibida, para los fines curriculares y laborales que al interesado convengan.",
@@ -32,8 +33,18 @@ export const CONSTANCIA_LAYOUT = {
   instructorSignature: { top: 66.4, maxHeightRatio: 0.07, maxWidthRatio: 0.32 },
   instructorName: { top: 74.0, fontSize: 16 },
   instructorSpecialty: { top: 77.0, fontSize: 13 },
-  instructorLicense: { top: 79.6, fontSize: 13 },
-  instructorLogo: { top: 81.8, maxHeightRatio: 0.095, maxWidthRatio: 0.28 },
+  /** Credentials stack under specialty; width capped to stay left of QR. */
+  instructorCredentials: {
+    fontSize: 12,
+    lineStep: 2.3,
+    maxWidthRatio: 0.48,
+  },
+  instructorLogo: {
+    gapAfterCredentials: 1.4,
+    fallbackTop: 81.8,
+    maxHeightRatio: 0.08,
+    maxWidthRatio: 0.28,
+  },
   qr: { top: 70.5, minSizeRatio: 0.16, rightRatio: 0.78 },
   folio: { top: 88.5, fontSize: 13 },
   folioRightRatio: 0.7,

@@ -86,10 +86,24 @@ export class CompanyFormsImportService {
     return Buffer.from(await book.xlsx.writeBuffer());
   }
 
-  async import(companyId: string, key: string, buffer: Buffer, staffId: string | null, dryRun: boolean) {
+  async import(
+    companyId: string,
+    key: string,
+    buffer: Buffer,
+    staffId: string | null,
+    dryRun: boolean,
+    evaluationYear?: number,
+  ) {
     const form = definition(key);
-    const company = await formService.getCompanyForms(companyId);
-    if (!company.assignedFormKeys.includes(form.key)) throw new AppError(409, "Asigna esta guía a la empresa antes de importar", "FORM_NOT_ASSIGNED");
+    const company = await formService.getCompanyForms(companyId, evaluationYear);
+    const year = company.evaluationYear;
+    if (!company.assignedFormKeys.includes(form.key)) {
+      throw new AppError(
+        409,
+        `Asigna esta guía a la empresa para ${year} antes de importar`,
+        "FORM_NOT_ASSIGNED",
+      );
+    }
     const employees = new Map((await findCompanyEmployeesBasic(companyId)).map(e => [e.id, e.name]));
     const { sheet, headers: rawHeaders } = await loadFirstSheet(buffer);
     // Acepta también las plantillas anteriores, que solo tenían el código.
@@ -123,14 +137,31 @@ export class CompanyFormsImportService {
       const parsed = parseImportAnswers(form, raw);
       if (parsed.errors.length) { result.message = parsed.errors.join("; "); continue; }
       try {
-        const current = await findEmployeeFormAnswers(companyId, id, key);
-        if (current && Object.keys(current.answers).length) { result.status = "skipped"; result.message = "Ya tiene respuestas; no se sobrescribió"; continue; }
-        if (!dryRun) await formService.updateEmployeeForm(companyId, id, key, parsed.answers, staffId, { onlyIfEmpty: true });
+        const current = await findEmployeeFormAnswers(companyId, id, key, year);
+        if (current && Object.keys(current.answers).length) {
+          result.status = "skipped";
+          result.message = `Ya tiene respuestas en ${year}; no se sobrescribió`;
+          continue;
+        }
+        if (!dryRun) {
+          await formService.updateEmployeeForm(companyId, id, key, parsed.answers, staffId, {
+            onlyIfEmpty: true,
+            evaluationYear: year,
+          });
+        }
         result.status = dryRun ? "valid" : "imported";
-        result.message = dryRun ? "Lista para importar" : "Evaluación guardada y calificada";
+        result.message = dryRun ? `Lista para importar a ${year}` : `Evaluación ${year} guardada y calificada`;
       } catch (error) { result.message = error instanceof Error ? error.message : "No se pudo guardar"; }
     }
-    return { dryRun, rows, valid: rows.filter(r => r.status === "valid").length, imported: rows.filter(r => r.status === "imported").length, skipped: rows.filter(r => r.status === "skipped").length, errors: rows.filter(r => r.status === "error").length };
+    return {
+      dryRun,
+      evaluationYear: year,
+      rows,
+      valid: rows.filter(r => r.status === "valid").length,
+      imported: rows.filter(r => r.status === "imported").length,
+      skipped: rows.filter(r => r.status === "skipped").length,
+      errors: rows.filter(r => r.status === "error").length,
+    };
   }
 }
 export const companyFormsImportService = new CompanyFormsImportService();

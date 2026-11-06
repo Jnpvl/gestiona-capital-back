@@ -5,11 +5,13 @@ import {
   findCompanyDemographics,
   countCompanyEmployees,
   createAssignment,
+  currentEvaluationYear,
   findAssignmentsByCompany,
   findCompanyAssignedFormKeys,
   findCompanyCompletedResponses,
   findCompanyEmployeesBasic,
   findCompanyEmployeesFormsSummary,
+  findCompanyEvaluationYears,
   findCompanyGuideProgress,
   findCompanyGuidesInUse,
   findCompanyAssignedFormKeys as findAssignedKeys,
@@ -71,28 +73,33 @@ export class FormService {
     return { form: FORM_DEFINITIONS[key] };
   }
 
-  async getCompanyForms(companyId: string) {
+  async getCompanyForms(companyId: string, evaluationYear?: number) {
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
+    const year = evaluationYear ?? currentEvaluationYear();
     const employees = await countCompanyEmployees(companyId);
     const workersCount = company.workersCount ?? null;
+    const evaluationYears = await findCompanyEvaluationYears(companyId);
     return {
+      evaluationYear: year,
+      evaluationYears,
       workersCount,
       employeesLinked: employees,
       suggestedFormKeys: suggestFormKeys(workersCount ?? (employees || null)),
       suggestionBasis: workersCount != null ? "workersCount" : "employeesLinked",
       forms: ASSIGNABLE_FORM_KEYS.map(summarize),
-      assignments: await findAssignmentsByCompany(companyId),
-      guideProgress: await findCompanyGuideProgress(companyId),
-      assignedFormKeys: await findAssignedKeys(companyId),
-      guidesInUse: await findCompanyGuidesInUse(companyId),
+      assignments: await findAssignmentsByCompany(companyId, year),
+      guideProgress: await findCompanyGuideProgress(companyId, year),
+      assignedFormKeys: await findAssignedKeys(companyId, year),
+      guidesInUse: await findCompanyGuidesInUse(companyId, year),
     };
   }
 
-  async employeesFormsSummary(companyId: string, studentIds?: string[]) {
+  async employeesFormsSummary(companyId: string, studentIds?: string[], evaluationYear?: number) {
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
-    const raw = await findCompanyEmployeesFormsSummary(companyId, studentIds);
+    const year = evaluationYear ?? currentEvaluationYear();
+    const raw = await findCompanyEmployeesFormsSummary(companyId, studentIds, year);
     const employees: Record<string, unknown[]> = {};
     for (const [studentId, list] of Object.entries(raw)) {
       employees[studentId] = list.map(({ answers, ...state }) => {
@@ -107,15 +114,17 @@ export class FormService {
    * Dashboard: todos los empleados con el estado/resultado de Guías I, II, III y V.
    * I/II/III: not_assigned si la empresa no la tiene asignada; si no, estado + resultado (si está completa).
    */
-  async companyResults(companyId: string) {
+  async companyResults(companyId: string, evaluationYear?: number) {
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
-    const [employees, assigned, statuses, completed, demographics] = await Promise.all([
+    const year = evaluationYear ?? currentEvaluationYear();
+    const [employees, assigned, statuses, completed, demographics, evaluationYears] = await Promise.all([
       findCompanyEmployeesBasic(companyId),
-      findCompanyAssignedFormKeys(companyId),
-      findCompanyEmployeesFormsSummary(companyId),
-      findCompanyCompletedResponses(companyId),
-      findCompanyDemographics(companyId),
+      findCompanyAssignedFormKeys(companyId, year),
+      findCompanyEmployeesFormsSummary(companyId, undefined, year),
+      findCompanyCompletedResponses(companyId, year),
+      findCompanyDemographics(companyId, year),
+      findCompanyEvaluationYears(companyId),
     ]);
     const resultBy = new Map<string, ReturnType<typeof buildResult>>();
     function buildResult(row: (typeof completed)[number], form: (typeof FORM_DEFINITIONS)[FormKey], s: FormScoreResult) {
@@ -181,6 +190,8 @@ export class FormService {
     };
     const guides = ["nom035_guia1", "nom035_guia2", "nom035_guia3"] as const;
     return {
+      evaluationYear: year,
+      evaluationYears,
       assignedFormKeys: assigned,
       demographics: demographicSummary,
       employees: employees.map((e) => {
@@ -231,7 +242,12 @@ export class FormService {
      * asStudent: lo contesta el propio empleado (solo guías "self", no completadas).
      * finalize: el empleado envía; exige todas las preguntas visibles contestadas.
      */
-    opts: { asStudent?: boolean; finalize?: boolean; onlyIfEmpty?: boolean } = {},
+    opts: {
+      asStudent?: boolean;
+      finalize?: boolean;
+      onlyIfEmpty?: boolean;
+      evaluationYear?: number;
+    } = {},
   ) {
     if (!isFormKey(formKey)) throw new AppError(404, "Formulario no encontrado", "FORM_NOT_FOUND");
     const company = await findCompanyById(companyId);
@@ -240,6 +256,7 @@ export class FormService {
     if (!student || student.companyId !== companyId) {
       throw new AppError(404, "El empleado no pertenece a esta empresa", "EMPLOYEE_NOT_FOUND");
     }
+    const evaluationYear = opts.evaluationYear ?? currentEvaluationYear();
     const form = FORM_DEFINITIONS[formKey];
     const questions = new Map(
       form.sections.flatMap((s) => s.questions.map((q) => [q.id, q] as const)),
@@ -306,7 +323,7 @@ export class FormService {
       throw new AppError(404, "Formulario no disponible", "FORM_NOT_AVAILABLE");
     }
     if (formKey === "nom035_guia5") {
-      const current = await findEmployeeFormAnswers(companyId, studentId, formKey);
+      const current = await findEmployeeFormAnswers(companyId, studentId, formKey, evaluationYear);
       const answers = merge(current?.answers ?? {});
       await saveEmployeeGuia5({
         companyId,
@@ -314,13 +331,14 @@ export class FormService {
         answers,
         completed: isComplete(answers),
         staffId,
+        evaluationYear,
       });
     } else {
-      const target = await findLatestResponseForEdit(companyId, studentId, formKey);
+      const target = await findLatestResponseForEdit(companyId, studentId, formKey, evaluationYear);
       if (!target) {
         throw new AppError(
           409,
-          `${form.title}: la empresa no tiene una asignación de este formulario. Asígnalo primero en la pestaña Formularios`,
+          `${form.title}: la empresa no tiene una asignación de este formulario para ${evaluationYear}. Asígnalo primero en la pestaña Formularios`,
           "FORM_NOT_ASSIGNED",
         );
       }
@@ -364,26 +382,33 @@ export class FormService {
 
   async assign(
     companyId: string,
-    input: { formKeys: FormKey[]; modes?: Partial<Record<FormKey, FormMode>>; dueAt?: Date | null },
+    input: {
+      formKeys: FormKey[];
+      modes?: Partial<Record<FormKey, FormMode>>;
+      evaluationYear?: number;
+      dueAt?: Date | null;
+    },
     createdByStaffId: string | null,
   ) {
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
-    // No se duplican guías ya asignadas a la empresa.
-    const already = await findAssignedKeys(companyId);
+    const year = input.evaluationYear ?? currentEvaluationYear();
+    // No se duplican guías ya asignadas a la empresa en el mismo año.
+    const already = await findAssignedKeys(companyId, year);
     const newKeys = input.formKeys.filter((k) => !already.includes(k));
     if (newKeys.length === 0) {
       throw new AppError(
         400,
-        "Formularios: las guías seleccionadas ya están asignadas a esta empresa",
+        `Formularios: las guías seleccionadas ya están asignadas para ${year}`,
         "FORMS_ALREADY_ASSIGNED",
-        [{ field: "formKeys", label: "Formularios", message: "las guías seleccionadas ya están asignadas a esta empresa" }],
+        [{ field: "formKeys", label: "Formularios", message: `las guías seleccionadas ya están asignadas para ${year}` }],
       );
     }
     const assignment = await createAssignment({
       companyId,
       formKeys: newKeys,
       formModes: Object.fromEntries(newKeys.map((k) => [k, input.modes?.[k] ?? "admin_applied"])),
+      evaluationYear: year,
       dueAt: input.dueAt ?? null,
       createdByStaffId,
     });
@@ -392,14 +417,15 @@ export class FormService {
     return { assignment };
   }
 
-  async setMode(companyId: string, formKey: string, mode: FormMode) {
+  async setMode(companyId: string, formKey: string, mode: FormMode, evaluationYear?: number) {
     if (!isFormKey(formKey) || formKey === "nom035_guia5") {
       throw new AppError(404, "Formulario no encontrado", "FORM_NOT_FOUND");
     }
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
+    const year = evaluationYear ?? currentEvaluationYear();
     const title = FORM_DEFINITIONS[formKey].title;
-    const { inUse, updated } = await setCompanyGuideMode(companyId, formKey, mode);
+    const { inUse, updated } = await setCompanyGuideMode(companyId, formKey, mode, year);
     if (inUse > 0) {
       const msg = `no se puede cambiar el modo: ${inUse} ${inUse === 1 ? "empleado ya la empezó" : "empleados ya la empezaron"}`;
       throw new AppError(409, `${title}: ${msg}`, "FORM_IN_USE", [{ field: "mode", label: title, message: msg }]);
@@ -454,14 +480,15 @@ export class FormService {
     return { formKey, status: saved.status };
   }
 
-  async unassign(companyId: string, formKey: string) {
+  async unassign(companyId: string, formKey: string, evaluationYear?: number) {
     if (!isFormKey(formKey) || formKey === "nom035_guia5") {
       throw new AppError(404, "Formulario no encontrado", "FORM_NOT_FOUND");
     }
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
+    const year = evaluationYear ?? currentEvaluationYear();
     const title = FORM_DEFINITIONS[formKey].title;
-    const { inUse, removed } = await unassignCompanyGuide(companyId, formKey);
+    const { inUse, removed } = await unassignCompanyGuide(companyId, formKey, year);
     if (inUse > 0) {
       const msg = `no se puede desasignar: ${inUse} ${inUse === 1 ? "empleado ya la empezó" : "empleados ya la empezaron"}`;
       throw new AppError(409, `${title}: ${msg}`, "FORM_IN_USE", [

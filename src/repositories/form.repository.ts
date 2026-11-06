@@ -4,6 +4,11 @@ import { pool } from "../config/database";
 export type FormMode = "admin_applied" | "self";
 export const FORM_MODES: readonly FormMode[] = ["admin_applied", "self"];
 
+/** Año calendario de evaluación NOM-035 (México). */
+export function currentEvaluationYear(): number {
+  return new Date().getFullYear();
+}
+
 /** Modo de la guía k en la asignación a (clave ausente = admin_applied). */
 const MODE_SQL = (a: string, k: string) => `COALESCE(${a}.form_modes->>${k}, 'admin_applied')`;
 
@@ -11,6 +16,7 @@ export interface FormAssignmentSummary {
   id: string;
   companyId: string;
   formKeys: string[];
+  evaluationYear: number;
   dueAt: string | null;
   createdAt: string;
   employeesTotal: number;
@@ -23,6 +29,7 @@ interface AssignmentRow {
   id: string;
   company_id: string;
   form_keys: string[];
+  evaluation_year: number;
   due_at: Date | null;
   created_at: Date;
   employees_total: string;
@@ -36,6 +43,7 @@ function mapAssignment(row: AssignmentRow): FormAssignmentSummary {
     id: row.id,
     companyId: row.company_id,
     formKeys: row.form_keys,
+    evaluationYear: Number(row.evaluation_year),
     dueAt: row.due_at ? row.due_at.toISOString() : null,
     createdAt: row.created_at.toISOString(),
     employeesTotal: Number(row.employees_total),
@@ -46,7 +54,7 @@ function mapAssignment(row: AssignmentRow): FormAssignmentSummary {
 }
 
 const ASSIGNMENT_SELECT = `
-  SELECT a.id, a.company_id, a.form_keys, a.due_at, a.created_at,
+  SELECT a.id, a.company_id, a.form_keys, a.evaluation_year, a.due_at, a.created_at,
          COUNT(DISTINCT r.student_id) AS employees_total,
          COUNT(DISTINCT r.student_id) FILTER (
            WHERE NOT EXISTS (
@@ -60,15 +68,33 @@ const ASSIGNMENT_SELECT = `
   FROM form_assignments a
   LEFT JOIN form_responses r ON r.assignment_id = a.id`;
 
-export async function findAssignmentsByCompany(companyId: string): Promise<FormAssignmentSummary[]> {
+export async function findAssignmentsByCompany(
+  companyId: string,
+  evaluationYear?: number,
+): Promise<FormAssignmentSummary[]> {
   const { rows } = await pool.query<AssignmentRow>(
     `${ASSIGNMENT_SELECT}
-     WHERE a.company_id = $1
+     WHERE a.company_id = $1 AND ($2::int IS NULL OR a.evaluation_year = $2)
      GROUP BY a.id
-     ORDER BY a.created_at DESC`,
-    [companyId],
+     ORDER BY a.evaluation_year DESC, a.created_at DESC`,
+    [companyId, evaluationYear ?? null],
   );
   return rows.map(mapAssignment);
+}
+
+/** Años con al menos una guía asignada (I/II/III) a la empresa. */
+export async function findCompanyEvaluationYears(companyId: string): Promise<number[]> {
+  const { rows } = await pool.query<{ y: number }>(
+    `SELECT DISTINCT evaluation_year AS y
+       FROM form_assignments
+      WHERE company_id = $1
+        AND EXISTS (
+          SELECT 1 FROM UNNEST(form_keys) AS k WHERE k <> 'nom035_guia5'
+        )
+      ORDER BY y DESC`,
+    [companyId],
+  );
+  return rows.map((r) => Number(r.y));
 }
 
 export async function countCompanyEmployees(companyId: string): Promise<number> {
@@ -84,6 +110,7 @@ export async function createAssignment(input: {
   companyId: string;
   formKeys: string[];
   formModes: Record<string, FormMode>;
+  evaluationYear: number;
   dueAt: Date | null;
   createdByStaffId: string | null;
 }): Promise<FormAssignmentSummary> {
@@ -91,10 +118,17 @@ export async function createAssignment(input: {
   try {
     await client.query("BEGIN");
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO form_assignments (company_id, form_keys, form_modes, due_at, created_by_staff_id)
-       VALUES ($1, $2, $3::jsonb, $4, $5)
+      `INSERT INTO form_assignments (company_id, form_keys, form_modes, evaluation_year, due_at, created_by_staff_id)
+       VALUES ($1, $2, $3::jsonb, $4, $5, $6)
        RETURNING id`,
-      [input.companyId, input.formKeys, JSON.stringify(input.formModes), input.dueAt, input.createdByStaffId],
+      [
+        input.companyId,
+        input.formKeys,
+        JSON.stringify(input.formModes),
+        input.evaluationYear,
+        input.dueAt,
+        input.createdByStaffId,
+      ],
     );
     const assignmentId = rows[0].id;
     await client.query(
@@ -138,23 +172,33 @@ export async function upsertEmployeeGuia5(input: {
   completed: boolean;
   staffId: string | null;
   requiredCount: number;
+  evaluationYear?: number;
 }, db: Pick<PoolClient, "query"> = pool): Promise<void> {
+  const year = input.evaluationYear ?? currentEvaluationYear();
   await db.query(
     `INSERT INTO employee_guia5_data
-       (company_id, student_id, answers, completed, completed_at, updated_by_staff_id)
-     VALUES ($1, $2, $3::jsonb, $4, CASE WHEN $4 THEN NOW() ELSE NULL END, $5)
-     ON CONFLICT (company_id, student_id) DO UPDATE SET
+       (company_id, student_id, evaluation_year, answers, completed, completed_at, updated_by_staff_id)
+     VALUES ($1, $2, $3, $4::jsonb, $5, CASE WHEN $5 THEN NOW() ELSE NULL END, $6)
+     ON CONFLICT (company_id, student_id, evaluation_year) DO UPDATE SET
        answers = employee_guia5_data.answers || EXCLUDED.answers,
        completed = EXCLUDED.completed
-         OR (SELECT COUNT(*) FROM jsonb_object_keys(employee_guia5_data.answers || EXCLUDED.answers)) >= $6,
+         OR (SELECT COUNT(*) FROM jsonb_object_keys(employee_guia5_data.answers || EXCLUDED.answers)) >= $7,
        completed_at = CASE
          WHEN employee_guia5_data.completed_at IS NOT NULL THEN employee_guia5_data.completed_at
          WHEN EXCLUDED.completed
-           OR (SELECT COUNT(*) FROM jsonb_object_keys(employee_guia5_data.answers || EXCLUDED.answers)) >= $6
+           OR (SELECT COUNT(*) FROM jsonb_object_keys(employee_guia5_data.answers || EXCLUDED.answers)) >= $7
          THEN NOW() ELSE NULL END,
        updated_by_staff_id = EXCLUDED.updated_by_staff_id,
        updated_at = NOW()`,
-    [input.companyId, input.studentId, JSON.stringify(input.answers), input.completed, input.staffId, input.requiredCount],
+    [
+      input.companyId,
+      input.studentId,
+      year,
+      JSON.stringify(input.answers),
+      input.completed,
+      input.staffId,
+      input.requiredCount,
+    ],
   );
 }
 
@@ -171,6 +215,7 @@ export interface EmployeeFormState {
 export async function findCompanyEmployeesFormsSummary(
   companyId: string,
   studentIds?: string[],
+  evaluationYear: number = currentEvaluationYear(),
 ): Promise<Record<string, EmployeeFormState[]>> {
   const filter = studentIds && studentIds.length > 0 ? studentIds : null;
   const { rows } = await pool.query<{
@@ -185,7 +230,9 @@ export async function findCompanyEmployeesFormsSummary(
                  ELSE 'pending' END AS status,
             NULL::jsonb AS answers
        FROM employee_guia5_data g
-      WHERE g.company_id = $1 AND ($2::uuid[] IS NULL OR g.student_id = ANY($2::uuid[]))
+      WHERE g.company_id = $1
+        AND g.evaluation_year = $3
+        AND ($2::uuid[] IS NULL OR g.student_id = ANY($2::uuid[]))
      UNION ALL
      (SELECT DISTINCT ON (r.student_id, r.form_key) r.student_id, r.form_key,
             CASE r.status WHEN 'completed' THEN 'completed'
@@ -194,11 +241,11 @@ export async function findCompanyEmployeesFormsSummary(
             CASE WHEN r.status = 'completed' THEN r.answers END
        FROM form_responses r
        JOIN form_assignments a ON a.id = r.assignment_id
-      WHERE a.company_id = $1 AND r.form_key <> 'nom035_guia5'
+      WHERE a.company_id = $1 AND a.evaluation_year = $3 AND r.form_key <> 'nom035_guia5'
         AND ($2::uuid[] IS NULL OR r.student_id = ANY($2::uuid[]))
       ORDER BY r.student_id, r.form_key, a.created_at DESC)
       ORDER BY 1, 2`,
-    [companyId, filter],
+    [companyId, filter, evaluationYear],
   );
   const out: Record<string, EmployeeFormState[]> = {};
   for (const row of rows) {
@@ -219,8 +266,8 @@ export async function findCompanyEmployeesFormsSummary(
   const { rows: assigned } = await pool.query<{ form_key: string }>(
     `SELECT DISTINCT k AS form_key
        FROM form_assignments a CROSS JOIN UNNEST(a.form_keys) AS k
-      WHERE a.company_id = $1 AND k <> 'nom035_guia5'`,
-    [companyId],
+      WHERE a.company_id = $1 AND a.evaluation_year = $2 AND k <> 'nom035_guia5'`,
+    [companyId, evaluationYear],
   );
   const applicable = ["nom035_guia5", ...assigned.map((r) => r.form_key)];
   const order = ["nom035_guia1", "nom035_guia2", "nom035_guia3", "nom035_guia5"];
@@ -239,6 +286,7 @@ export async function findEmployeeFormAnswers(
   companyId: string,
   studentId: string,
   formKey: string,
+  evaluationYear: number = currentEvaluationYear(),
 ): Promise<{ answers: Record<string, string>; status: EmployeeFormStatus; updatedAt: string | null } | null> {
   if (formKey === "nom035_guia5") {
     const { rows } = await pool.query<{
@@ -247,8 +295,9 @@ export async function findEmployeeFormAnswers(
       updated_at: Date;
     }>(
       `SELECT answers, completed, updated_at FROM employee_guia5_data
-        WHERE company_id = $1 AND student_id = $2`,
-      [companyId, studentId],
+        WHERE company_id = $1 AND student_id = $2 AND evaluation_year = $3
+        LIMIT 1`,
+      [companyId, studentId, evaluationYear],
     );
     const r = rows[0];
     if (!r) return null;
@@ -268,9 +317,10 @@ export async function findEmployeeFormAnswers(
        FROM form_responses r
        JOIN form_assignments a ON a.id = r.assignment_id
       WHERE a.company_id = $1 AND r.student_id = $2 AND r.form_key = $3
+        AND a.evaluation_year = $4
       ORDER BY a.created_at DESC
       LIMIT 1`,
-    [companyId, studentId, formKey],
+    [companyId, studentId, formKey, evaluationYear],
   );
   const r = rows[0];
   if (!r) return null;
@@ -326,12 +376,14 @@ export async function saveEmployeeGuia5(input: {
   answers: Record<string, string>;
   completed: boolean;
   staffId: string | null;
+  evaluationYear?: number;
 }): Promise<void> {
+  const year = input.evaluationYear ?? currentEvaluationYear();
   await pool.query(
     `INSERT INTO employee_guia5_data
-       (company_id, student_id, answers, completed, completed_at, updated_by_staff_id)
-     VALUES ($1, $2, $3::jsonb, $4, CASE WHEN $4 THEN NOW() ELSE NULL END, $5)
-     ON CONFLICT (company_id, student_id) DO UPDATE SET
+       (company_id, student_id, evaluation_year, answers, completed, completed_at, updated_by_staff_id)
+     VALUES ($1, $2, $3, $4::jsonb, $5, CASE WHEN $5 THEN NOW() ELSE NULL END, $6)
+     ON CONFLICT (company_id, student_id, evaluation_year) DO UPDATE SET
        answers = EXCLUDED.answers,
        completed = EXCLUDED.completed,
        completed_at = CASE
@@ -339,7 +391,7 @@ export async function saveEmployeeGuia5(input: {
          ELSE COALESCE(employee_guia5_data.completed_at, NOW()) END,
        updated_by_staff_id = EXCLUDED.updated_by_staff_id,
        updated_at = NOW()`,
-    [input.companyId, input.studentId, JSON.stringify(input.answers), input.completed, input.staffId],
+    [input.companyId, input.studentId, year, JSON.stringify(input.answers), input.completed, input.staffId],
   );
 }
 
@@ -348,6 +400,7 @@ export async function findLatestResponseForEdit(
   companyId: string,
   studentId: string,
   formKey: string,
+  evaluationYear: number = currentEvaluationYear(),
 ): Promise<{
   assignmentId: string;
   mode: FormMode;
@@ -357,9 +410,9 @@ export async function findLatestResponseForEdit(
 } | null> {
   const { rows } = await pool.query<{ id: string; mode: FormMode }>(
     `SELECT a.id, ${MODE_SQL("a", "$2::text")} AS mode FROM form_assignments a
-      WHERE a.company_id = $1 AND $2 = ANY(a.form_keys)
+      WHERE a.company_id = $1 AND $2 = ANY(a.form_keys) AND a.evaluation_year = $3
       ORDER BY a.created_at DESC LIMIT 1`,
-    [companyId, formKey],
+    [companyId, formKey, evaluationYear],
   );
   const assignmentId = rows[0]?.id;
   if (!assignmentId) return null;
@@ -431,7 +484,10 @@ export interface CompanyFormResultRow {
 }
 
 /** Última respuesta completa por empleado y guía (I/II/III) de la empresa. */
-export async function findCompanyCompletedResponses(companyId: string): Promise<CompanyFormResultRow[]> {
+export async function findCompanyCompletedResponses(
+  companyId: string,
+  evaluationYear: number = currentEvaluationYear(),
+): Promise<CompanyFormResultRow[]> {
   const { rows } = await pool.query<{
     id: string;
     student_id: string;
@@ -452,12 +508,12 @@ export async function findCompanyCompletedResponses(companyId: string): Promise<
          FROM form_responses r
          JOIN form_assignments a ON a.id = r.assignment_id
          JOIN students s ON s.id = r.student_id
-        WHERE a.company_id = $1 AND r.form_key <> 'nom035_guia5'
+        WHERE a.company_id = $1 AND a.evaluation_year = $2 AND r.form_key <> 'nom035_guia5'
         ORDER BY r.student_id, r.form_key, a.created_at DESC
      ) t
      WHERE t.status = 'completed'
      ORDER BY t.paternal_last_name NULLS LAST, t.first_names, t.form_key`,
-    [companyId],
+    [companyId, evaluationYear],
   );
   return rows.map((r) => ({
     responseId: r.id,
@@ -524,12 +580,15 @@ export async function findCompanyEmployeesBasic(companyId: string): Promise<{ id
 }
 
 /** Guías asignadas a la empresa (sin Guía V). */
-export async function findCompanyAssignedFormKeys(companyId: string): Promise<string[]> {
+export async function findCompanyAssignedFormKeys(
+  companyId: string,
+  evaluationYear: number = currentEvaluationYear(),
+): Promise<string[]> {
   const { rows } = await pool.query<{ form_key: string }>(
     `SELECT DISTINCT k AS form_key
        FROM form_assignments a CROSS JOIN UNNEST(a.form_keys) AS k
-      WHERE a.company_id = $1 AND k <> 'nom035_guia5'`,
-    [companyId],
+      WHERE a.company_id = $1 AND a.evaluation_year = $2 AND k <> 'nom035_guia5'`,
+    [companyId, evaluationYear],
   );
   return rows.map((r) => r.form_key);
 }
@@ -550,7 +609,10 @@ export interface FormGuideProgress {
  * Progreso por guía (I/II/III) usando la asignación más reciente que incluye cada guía
  * (misma lógica que la edición). Total = empleados activos de la empresa.
  */
-export async function findCompanyGuideProgress(companyId: string): Promise<FormGuideProgress[]> {
+export async function findCompanyGuideProgress(
+  companyId: string,
+  evaluationYear: number = currentEvaluationYear(),
+): Promise<FormGuideProgress[]> {
   const { rows } = await pool.query<{
     form_key: string;
     mode: FormMode;
@@ -565,7 +627,7 @@ export async function findCompanyGuideProgress(companyId: string): Promise<FormG
        SELECT DISTINCT ON (k) k AS form_key, a.id AS assignment_id, a.created_at, a.due_at,
               ${MODE_SQL("a", "k")} AS mode
          FROM form_assignments a CROSS JOIN UNNEST(a.form_keys) AS k
-        WHERE a.company_id = $1 AND k <> 'nom035_guia5'
+        WHERE a.company_id = $1 AND a.evaluation_year = $2 AND k <> 'nom035_guia5'
         ORDER BY k, a.created_at DESC
      ), emp AS (
        SELECT id FROM students WHERE company_id = $1 AND active = TRUE
@@ -580,7 +642,7 @@ export async function findCompanyGuideProgress(companyId: string): Promise<FormG
         AND r.student_id IN (SELECT id FROM emp)
       GROUP BY l.form_key, l.mode, l.assignment_id, l.created_at, l.due_at
       ORDER BY l.form_key`,
-    [companyId],
+    [companyId, evaluationYear],
   );
   return rows.map((r) => {
     const total = Number(r.employees_total);
@@ -601,15 +663,18 @@ export async function findCompanyGuideProgress(companyId: string): Promise<FormG
 }
 
 /** Empleados con respuesta iniciada (parcial o completa) por guía en la empresa. */
-export async function findCompanyGuidesInUse(companyId: string): Promise<Record<string, number>> {
+export async function findCompanyGuidesInUse(
+  companyId: string,
+  evaluationYear: number = currentEvaluationYear(),
+): Promise<Record<string, number>> {
   const { rows } = await pool.query<{ form_key: string; n: string }>(
     `SELECT r.form_key, COUNT(DISTINCT r.student_id) AS n
        FROM form_responses r
        JOIN form_assignments a ON a.id = r.assignment_id
-      WHERE a.company_id = $1 AND r.form_key <> 'nom035_guia5'
+      WHERE a.company_id = $1 AND a.evaluation_year = $2 AND r.form_key <> 'nom035_guia5'
         AND (r.status <> 'pending' OR r.answers <> '{}'::jsonb)
       GROUP BY r.form_key`,
-    [companyId],
+    [companyId, evaluationYear],
   );
   return Object.fromEntries(rows.map((r) => [r.form_key, Number(r.n)]));
 }
@@ -619,15 +684,19 @@ export async function findCompanyGuidesInUse(companyId: string): Promise<Record<
  * de cada asignación y elimina las asignaciones que queden sin guías.
  * Devuelve el número de empleados que ya la usan (si > 0 no cambia nada).
  */
-export async function unassignCompanyGuide(companyId: string, formKey: string): Promise<{ inUse: number; removed: number }> {
+export async function unassignCompanyGuide(
+  companyId: string,
+  formKey: string,
+  evaluationYear: number = currentEvaluationYear(),
+): Promise<{ inUse: number; removed: number }> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const { rows: asg } = await client.query<{ id: string }>(
       `SELECT id FROM form_assignments
-        WHERE company_id = $1 AND $2 = ANY(form_keys)
+        WHERE company_id = $1 AND evaluation_year = $3 AND $2 = ANY(form_keys)
         FOR UPDATE`,
-      [companyId, formKey],
+      [companyId, formKey, evaluationYear],
     );
     const ids = asg.map((a) => a.id);
     const { rows: used } = await client.query<{ n: string }>(
@@ -672,13 +741,16 @@ export async function setCompanyGuideMode(
   companyId: string,
   formKey: string,
   mode: FormMode,
+  evaluationYear: number = currentEvaluationYear(),
 ): Promise<{ inUse: number; updated: number }> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const { rows: asg } = await client.query<{ id: string }>(
-      `SELECT id FROM form_assignments WHERE company_id = $1 AND $2 = ANY(form_keys) FOR UPDATE`,
-      [companyId, formKey],
+      `SELECT id FROM form_assignments
+        WHERE company_id = $1 AND evaluation_year = $3 AND $2 = ANY(form_keys)
+        FOR UPDATE`,
+      [companyId, formKey, evaluationYear],
     );
     const ids = asg.map((a) => a.id);
     const { rows: used } = await client.query<{ n: string }>(
@@ -755,10 +827,14 @@ export async function findStudentPendingForms(
 }
 
 /** Fichas demográficas de los empleados vinculados a una empresa. */
-export async function findCompanyDemographics(companyId: string) {
+export async function findCompanyDemographics(
+  companyId: string,
+  evaluationYear: number = currentEvaluationYear(),
+) {
   const { rows } = await pool.query<{ student_id: string; answers: Record<string, string>; completed: boolean }>(
-    `SELECT student_id, answers, completed FROM employee_guia5_data WHERE company_id = $1`,
-    [companyId],
+    `SELECT student_id, answers, completed FROM employee_guia5_data
+      WHERE company_id = $1 AND evaluation_year = $2`,
+    [companyId, evaluationYear],
   );
   return rows;
 }

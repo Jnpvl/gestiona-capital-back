@@ -53,6 +53,26 @@ function toConstanciaUpper(text: string): string {
   return sanitizePdfText(text).toLocaleUpperCase("es-MX");
 }
 
+function isJpegBytes(bytes: Uint8Array): boolean {
+  return bytes[0] === 0xff && bytes[1] === 0xd8;
+}
+
+function isPngBytes(bytes: Uint8Array): boolean {
+  return (
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  );
+}
+
+async function bytesForPdfImage(bytes: Buffer): Promise<Uint8Array> {
+  if (isJpegBytes(bytes) || isPngBytes(bytes)) return bytes;
+  // Staff signatures may be uploaded as WebP/GIF; pdf-lib only embeds JPG/PNG.
+  const sharp = (await import("sharp")).default;
+  return sharp(bytes).png().toBuffer();
+}
+
 async function embedLocalImage(pdfDoc: PDFDocument, fileUrl?: string | null) {
   if (!fileUrl) return null;
   try {
@@ -64,9 +84,9 @@ async function embedLocalImage(pdfDoc: PDFDocument, fileUrl?: string | null) {
     }
     if (!absolutePath) return null;
 
-    const bytes = await fs.readFile(absolutePath);
-    const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
-    return isJpeg ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(bytes);
+    const fileBytes = await fs.readFile(absolutePath);
+    const bytes = await bytesForPdfImage(fileBytes);
+    return isJpegBytes(bytes) ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(bytes);
   } catch {
     return null;
   }
@@ -263,7 +283,10 @@ function drawBoxedChars(
 export async function generateDc3Pdf(data: Dc3PdfData): Promise<Uint8Array> {
   const absolutePath = resolveTemplateAbsolutePath("/templates/dc3.pdf");
   const templateBytes = await fs.readFile(absolutePath);
-  const templateDoc = await PDFDocument.load(templateBytes);
+  const templateDoc = await PDFDocument.load(templateBytes, {
+    ignoreEncryption: true,
+    updateMetadata: false,
+  });
   const pdfDoc = await PDFDocument.create();
   const copied = await pdfDoc.copyPages(templateDoc, [0, 1]);
   copied.forEach((page) => pdfDoc.addPage(page));
@@ -272,61 +295,41 @@ export async function generateDc3Pdf(data: Dc3PdfData): Promise<Uint8Array> {
   const { width, height } = page.getSize();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  // Cover the STPS logo-placeholder instruction and place brand logo.
-  const clearTopY = height * (1 - DC3_LAYOUT.header.clearTop / 100);
-  const clearBottomY = height * (1 - DC3_LAYOUT.header.clearBottom / 100);
-  page.drawRectangle({
-    x: width * 0.03,
-    y: clearBottomY,
-    width: width * 0.94,
-    height: clearTopY - clearBottomY,
-    color: rgb(1, 1, 1),
-  });
-
-  const bandHeight = clearTopY - clearBottomY;
-  const maxLogoHeight = height * (DC3_LAYOUT.header.logoMaxHeightPct / 100);
-  const qrSize = Math.min(maxLogoHeight, bandHeight * 0.92);
-  const qrGap = width * (DC3_LAYOUT.header.qrGapPct / 100);
-  let logoWidth = 0;
-  let logoHeight = 0;
-  let logoImage: Awaited<ReturnType<PDFDocument["embedPng"]>> | null = null;
-
-  try {
-    const logoPath = path.join(process.cwd(), "assets/templates/gch-logo.png");
-    const logoBytes = await fs.readFile(logoPath);
-    const isJpeg = logoBytes[0] === 0xff && logoBytes[1] === 0xd8;
-    logoImage = isJpeg ? await pdfDoc.embedJpg(logoBytes) : await pdfDoc.embedPng(logoBytes);
-    const scale = Math.min(maxLogoHeight / logoImage.height, (width * 0.36) / logoImage.width);
-    logoWidth = logoImage.width * scale;
-    logoHeight = logoImage.height * scale;
-  } catch {
-    // Logo is optional; QR still goes in the header.
-  }
-
+  // Template already has the brand logo on the left; only place the QR on the right.
+  const qrSize = height * (DC3_LAYOUT.header.qrSizePct / 100);
+  const qrRightInset = width * (DC3_LAYOUT.header.qrRightInsetPct / 100);
+  const qrX = width - qrRightInset - qrSize;
+  const qrTopY = height * (1 - DC3_LAYOUT.header.qrTop / 100);
+  const qrY = qrTopY - qrSize;
   const qrPng = await QRCode.toBuffer(
     buildConstanciaQrPayload(data.certificateNumber, env.frontendUrl),
     {
       type: "png",
-      width: Math.max(220, Math.round(qrSize)),
+      width: Math.max(512, Math.round(qrSize * 4)),
       margin: 1,
       errorCorrectionLevel: "M",
     },
   );
   const qrImage = await pdfDoc.embedPng(qrPng);
-  const groupWidth = logoWidth > 0 ? logoWidth + qrGap + qrSize : qrSize;
-  const groupX = (width - groupWidth) / 2;
-  const logoY = clearBottomY + (bandHeight - logoHeight) / 2;
-  const qrY = clearBottomY + (bandHeight - qrSize) / 2;
-
-  if (logoImage) {
-    page.drawImage(logoImage, { x: groupX, y: logoY, width: logoWidth, height: logoHeight });
-  }
   page.drawImage(qrImage, {
-    x: groupX + (logoWidth > 0 ? logoWidth + qrGap : 0),
+    x: qrX,
     y: qrY,
     width: qrSize,
     height: qrSize,
   });
+
+  const folioText = `Folio: ${data.certificateNumber}`;
+  const folioSize = DC3_LAYOUT.header.folioFontSize;
+  const folioY = qrY - height * (DC3_LAYOUT.header.folioGapPct / 100) - folioSize;
+  drawCenteredText(
+    page,
+    font,
+    folioText,
+    qrX + qrSize / 2,
+    folioY,
+    folioSize,
+    rgb(0.12, 0.12, 0.12),
+  );
 
   const drawField = (text: string, top: number, xPct: number, size: number, maxWidthPct?: number) => {
     const safe = sanitizePdfText(text);
@@ -472,42 +475,81 @@ export async function generateDc3Pdf(data: Dc3PdfData): Promise<Uint8Array> {
     DC3_LAYOUT.contentWidthPct,
   );
 
+  const columnWidth = (width * DC3_LAYOUT.signatureColumns.widthPct) / 100;
+  const instructorCenterX = (width * DC3_LAYOUT.signatureColumns.instructorCenterXPct) / 100;
+  const employerCenterX = (width * DC3_LAYOUT.signatureColumns.employerCenterXPct) / 100;
+  const workerRepCenterX = (width * DC3_LAYOUT.signatureColumns.workerRepCenterXPct) / 100;
+
   const instructorSignature = await embedLocalImage(pdfDoc, data.instructorSignatureUrl);
   if (instructorSignature) {
-    const maxH = height * (DC3_LAYOUT.instructorSignature.maxHeightPct / 100);
-    const maxW = width * (DC3_LAYOUT.instructorSignature.maxWidthPct / 100);
-    const scale = Math.min(maxH / instructorSignature.height, maxW / instructorSignature.width);
+    const sigTopY = height * (1 - DC3_LAYOUT.instructorSignature.top / 100);
+    const nameTopY =
+      height * (1 - DC3_LAYOUT.instructorName.top / 100) +
+      height * (DC3_LAYOUT.instructorSignature.bottomGapPct / 100);
+    const availableH = Math.max(24, sigTopY - nameTopY);
+    const preferredH = height * (DC3_LAYOUT.instructorSignature.preferredHeightPct / 100);
+    const preferredW = width * (DC3_LAYOUT.instructorSignature.preferredWidthPct / 100);
+    const maxH = Math.min(preferredH, availableH);
+    const maxW = Math.min(preferredW, columnWidth);
+    const scale = Math.min(
+      maxH / instructorSignature.height,
+      maxW / instructorSignature.width,
+    );
     const sigW = instructorSignature.width * scale;
     const sigH = instructorSignature.height * scale;
-    const sigTopY = height * (1 - DC3_LAYOUT.instructorSignature.top / 100);
+    // Sit signature toward the bottom of its band, just above the name.
+    const sigY = Math.max(nameTopY, sigTopY - sigH);
     page.drawImage(instructorSignature, {
-      x: (width * DC3_LAYOUT.instructorSignature.xPct) / 100,
-      y: sigTopY - sigH,
+      x: instructorCenterX - sigW / 2,
+      y: sigY,
       width: sigW,
       height: sigH,
     });
   }
 
-  drawField(
+  const drawCenteredColumnName = (
+    value: string,
+    top: number,
+    centerX: number,
+    fontSize: number,
+    minFontSize: number,
+  ) => {
+    const safe = sanitizePdfText(value);
+    if (!safe) return;
+
+    let size = fontSize;
+    let lines = wrapText(font, safe, size, columnWidth);
+    while (size > minFontSize && (lines.length > 2 || lines.some((line) => font.widthOfTextAtSize(line, size) > columnWidth))) {
+      size -= 0.5;
+      lines = wrapText(font, safe, size, columnWidth);
+    }
+
+    const startY = yFromTop(height, top, size);
+    lines.slice(0, 2).forEach((line, index) => {
+      drawCenteredText(page, font, line, centerX, startY - index * size * 1.15, size);
+    });
+  };
+
+  drawCenteredColumnName(
     data.instructorName,
     DC3_LAYOUT.instructorName.top,
-    DC3_LAYOUT.instructorName.xPct,
+    instructorCenterX,
     DC3_LAYOUT.instructorName.fontSize,
-    24,
+    DC3_LAYOUT.instructorName.minFontSize,
   );
-  drawField(
+  drawCenteredColumnName(
     data.employerName,
     DC3_LAYOUT.employerName.top,
-    DC3_LAYOUT.employerName.xPct,
+    employerCenterX,
     DC3_LAYOUT.employerName.fontSize,
-    24,
+    DC3_LAYOUT.employerName.minFontSize,
   );
-  drawField(
+  drawCenteredColumnName(
     data.workerRepName,
     DC3_LAYOUT.workerRepName.top,
-    DC3_LAYOUT.workerRepName.xPct,
+    workerRepCenterX,
     DC3_LAYOUT.workerRepName.fontSize,
-    24,
+    DC3_LAYOUT.workerRepName.minFontSize,
   );
 
   return pdfDoc.save();
@@ -703,15 +745,40 @@ export async function generateConstanciaPdf(
     size(CONSTANCIA_LAYOUT.instructorSpecialty.fontSize),
     label,
   );
-  drawLeftText(
-    page,
-    fontRegular,
-    data.instructorLicense,
-    leftX,
-    yOf(CONSTANCIA_LAYOUT.instructorLicense.top, size(CONSTANCIA_LAYOUT.instructorLicense.fontSize)),
-    size(CONSTANCIA_LAYOUT.instructorLicense.fontSize),
-    label,
-  );
+
+  const credentialSize = size(CONSTANCIA_LAYOUT.instructorCredentials.fontSize);
+  const credentialMaxWidth = width * CONSTANCIA_LAYOUT.instructorCredentials.maxWidthRatio;
+  let nextCredentialTop =
+    CONSTANCIA_LAYOUT.instructorSpecialty.top + CONSTANCIA_LAYOUT.instructorCredentials.lineStep;
+
+  const drawInstructorCredential = (line: string) => {
+    const lines = wrapText(fontRegular, line, credentialSize, credentialMaxWidth).slice(0, 2);
+    const startY = yOf(nextCredentialTop, credentialSize);
+    lines.forEach((wrapped, index) => {
+      drawLeftText(
+        page,
+        fontRegular,
+        wrapped,
+        leftX,
+        startY - index * credentialSize * 1.15,
+        credentialSize,
+        label,
+      );
+    });
+    nextCredentialTop +=
+      CONSTANCIA_LAYOUT.instructorCredentials.lineStep * Math.max(lines.length, 1);
+  };
+
+  if (data.instructorRenapConocer) {
+    drawInstructorCredential(
+      `${CONSTANCIA_COPY.renapLabel} ${data.instructorRenapConocer}`,
+    );
+  }
+  if (data.instructorLicense) {
+    drawInstructorCredential(
+      `${CONSTANCIA_COPY.licenseLabel} ${data.instructorLicense}`,
+    );
+  }
 
   const instructorLogo = await embedLocalImage(pdfDoc, data.instructorLogoUrl);
   if (instructorLogo) {
@@ -720,7 +787,11 @@ export async function generateConstanciaPdf(
     const logoScale = Math.min(maxH / instructorLogo.height, maxW / instructorLogo.width);
     const logoW = instructorLogo.width * logoScale;
     const logoH = instructorLogo.height * logoScale;
-    const logoTopY = height * (1 - CONSTANCIA_LAYOUT.instructorLogo.top / 100);
+    const hasCredentials = Boolean(data.instructorRenapConocer || data.instructorLicense);
+    const logoTopPct = hasCredentials
+      ? nextCredentialTop + CONSTANCIA_LAYOUT.instructorLogo.gapAfterCredentials
+      : CONSTANCIA_LAYOUT.instructorLogo.fallbackTop;
+    const logoTopY = height * (1 - logoTopPct / 100);
     page.drawImage(instructorLogo, {
       x: leftX,
       y: logoTopY - logoH,
@@ -741,7 +812,7 @@ export async function generateConstanciaPdf(
     buildConstanciaQrPayload(data.certificateNumber, env.frontendUrl),
     {
       type: "png",
-      width: Math.max(220, Math.round(qrSize)),
+      width: Math.max(512, Math.round(qrSize * 4)),
       margin: 1,
       errorCorrectionLevel: "M",
     },

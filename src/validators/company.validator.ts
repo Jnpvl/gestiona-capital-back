@@ -114,3 +114,9 @@ export const sendEmployeeAccessSchema = z
       ctx.addIssue({ code: "custom", path: ["studentIds"], message: "Selecciona al menos un empleado" });
     }
   });
+
+/** Asignación masiva de un curso a los empleados de la empresa (siempre con empresa). */
+export const assignCompanyCourseSchema = z.object({
+  courseId: z.string().uuid("Curso inválido"),
+  deliveryMode: z.enum(["online", "presencial"]).default("online"),
+});

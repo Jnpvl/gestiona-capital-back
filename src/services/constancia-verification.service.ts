@@ -16,6 +16,14 @@ export interface PublicConstanciaVerification {
   location: string;
   instructorName: string | null;
   instructorSpecialty: string | null;
+  instructorAceStps: string | null;
+  instructorRenapConocer: string | null;
+  instructorLicense: string | null;
+}
+
+function toPublicUpper(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? "";
+  return trimmed ? trimmed.toLocaleUpperCase("es-MX") : null;
 }
 
 export class ConstanciaVerificationService {
@@ -40,6 +48,9 @@ export class ConstanciaVerificationService {
       instructor_name: string | null;
       instructor_career: string | null;
       instructor_area: string | null;
+      instructor_ace_stps: string | null;
+      instructor_renap_conocer: string | null;
+      instructor_license: string | null;
     }>(
       `SELECT ep.certificate_number,
               ep.certificate_issued_at,
@@ -54,7 +65,10 @@ export class ConstanciaVerificationService {
               e.completed_at,
               st.name AS instructor_name,
               st.career AS instructor_career,
-              st.professional_area AS instructor_area
+              st.professional_area AS instructor_area,
+              st.ace_stps_registration AS instructor_ace_stps,
+              st.renap_conocer AS instructor_renap_conocer,
+              st.professional_license AS instructor_license
        FROM enrollment_progress ep
        INNER JOIN enrollments e ON e.id = ep.enrollment_id
        INNER JOIN students s ON s.id = e.student_id
@@ -90,9 +104,13 @@ export class ConstanciaVerificationService {
       modality,
       period,
       location: row.location?.trim() || CONSTANCIA_COPY.defaultIssuedPlace,
-      instructorName: row.instructor_name,
-      instructorSpecialty:
+      instructorName: toPublicUpper(row.instructor_name),
+      instructorSpecialty: toPublicUpper(
         row.instructor_area?.trim() || row.instructor_career?.trim() || null,
+      ),
+      instructorAceStps: toPublicUpper(row.instructor_ace_stps),
+      instructorRenapConocer: toPublicUpper(row.instructor_renap_conocer),
+      instructorLicense: toPublicUpper(row.instructor_license),
     };
   }
 }

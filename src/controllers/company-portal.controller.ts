@@ -5,6 +5,7 @@ import { AppError } from "../errors/app-error";
 import { findStudentById, findStudentEnrollments, findStudentsPaginated } from "../repositories/student.repository";
 import { companyService } from "../services/company.service";
 import { formService } from "../services/form.service";
+import { parseEvaluationYearQuery } from "../validators/form.validator";
 
 /**
  * Portal de empresa: SOLO LECTURA. El companyId siempre sale del token de empresa
@@ -147,7 +148,9 @@ export class CompanyPortalController {
 
   async results(req: Request, res: Response, next: NextFunction) {
     try {
-      res.json(await formService.companyResults(companyIdOf(req)));
+      res.json(
+        await formService.companyResults(companyIdOf(req), parseEvaluationYearQuery(req.query.year)),
+      );
     } catch (error) {
       next(error);
     }

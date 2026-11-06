@@ -236,3 +236,108 @@ export async function verifyCompanyPassword(company: CompanyRecord, password: st
 export async function touchCompanyLogin(id: string): Promise<void> {
   await pool.query("UPDATE companies SET last_login_at = NOW() WHERE id = $1", [id]);
 }
+
+export interface CompanyCourseSummary {
+  courseId: string;
+  courseTitle: string;
+  courseSlug: string;
+  deliveryModes: ("online" | "presencial")[];
+  activeCount: number;
+  completedCount: number;
+  employeesTotal: number;
+  firstEnrolledAt: string | null;
+  lastEnrolledAt: string | null;
+}
+
+/** Cursos con al menos una inscripción activa «con empresa» de empleados de la empresa. */
+export async function findCompanyCourseSummaries(companyId: string): Promise<CompanyCourseSummary[]> {
+  const { rows } = await pool.query<{
+    course_id: string;
+    course_title: string;
+    course_slug: string;
+    delivery_modes: ("online" | "presencial")[];
+    active_count: string;
+    completed_count: string;
+    employees_total: string;
+    first_enrolled_at: Date | null;
+    last_enrolled_at: Date | null;
+  }>(
+    `WITH emp AS (
+       SELECT id FROM students WHERE company_id = $1 AND active = TRUE
+     )
+     SELECT c.id AS course_id,
+            c.title AS course_title,
+            c.slug AS course_slug,
+            ARRAY_AGG(DISTINCT e.delivery_mode ORDER BY e.delivery_mode) AS delivery_modes,
+            COUNT(*)::text AS active_count,
+            COUNT(*) FILTER (WHERE e.completed_at IS NOT NULL)::text AS completed_count,
+            (SELECT COUNT(*) FROM emp)::text AS employees_total,
+            MIN(e.enrolled_at) AS first_enrolled_at,
+            MAX(e.enrolled_at) AS last_enrolled_at
+       FROM enrollments e
+       JOIN students s ON s.id = e.student_id
+       JOIN courses c ON c.id = e.course_id
+      WHERE s.company_id = $1
+        AND e.enrolled_via_company = TRUE
+        AND e.status = 'active'
+      GROUP BY c.id, c.title, c.slug
+      ORDER BY MAX(e.enrolled_at) DESC`,
+    [companyId],
+  );
+
+  return rows.map((row) => ({
+    courseId: row.course_id,
+    courseTitle: row.course_title,
+    courseSlug: row.course_slug,
+    deliveryModes: row.delivery_modes ?? [],
+    activeCount: Number(row.active_count),
+    completedCount: Number(row.completed_count),
+    employeesTotal: Number(row.employees_total),
+    firstEnrolledAt: row.first_enrolled_at?.toISOString() ?? null,
+    lastEnrolledAt: row.last_enrolled_at?.toISOString() ?? null,
+  }));
+}
+
+export interface CompanyEmployeeForCourseAssign {
+  id: string;
+  name: string;
+  email: string;
+  curp: string | null;
+  stpsOccupationCode: string | null;
+}
+
+/** Empleados activos de la empresa para asignación masiva de cursos. */
+export async function findCompanyActiveEmployeesForCourses(
+  companyId: string,
+): Promise<CompanyEmployeeForCourseAssign[]> {
+  const { rows } = await pool.query<{
+    id: string;
+    paternal_last_name: string | null;
+    maternal_last_name: string | null;
+    first_names: string | null;
+    name: string | null;
+    email: string;
+    curp: string | null;
+    stps_occupation_code: string | null;
+  }>(
+    `SELECT id, paternal_last_name, maternal_last_name, first_names, name, email, curp, stps_occupation_code
+       FROM students
+      WHERE company_id = $1 AND active = TRUE
+      ORDER BY paternal_last_name NULLS LAST, maternal_last_name NULLS LAST, first_names`,
+    [companyId],
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    name:
+      [row.paternal_last_name, row.maternal_last_name, row.first_names]
+        .map((part) => part?.trim())
+        .filter(Boolean)
+        .join(" ") ||
+      row.name ||
+      "—",
+    email: row.email,
+    curp: row.curp,
+    stpsOccupationCode: row.stps_occupation_code,
+  }));
+}

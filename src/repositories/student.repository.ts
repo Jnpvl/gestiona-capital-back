@@ -405,12 +405,14 @@ export async function findStudentEnrollments(
   });
 }
 
+export type AssignCourseOutcome = "created" | "reactivated" | "upgraded_to_company";
+
 export async function assignCourseToStudent(
   studentId: string,
   courseId: string,
   enrolledViaCompany = false,
   deliveryMode: EnrollmentDeliveryMode = "online",
-): Promise<StudentEnrollment> {
+): Promise<{ enrollment: StudentEnrollment; outcome: AssignCourseOutcome }> {
   const student = await findStudentById(studentId);
   if (!student) {
     throw new Error("STUDENT_NOT_FOUND");
@@ -428,17 +430,34 @@ export async function assignCourseToStudent(
     throw new Error("COURSE_NOT_PUBLISHED");
   }
 
-  const { rows: existingRows } = await pool.query<{ id: string; status: string }>(
-    "SELECT id, status FROM enrollments WHERE student_id = $1 AND course_id = $2 LIMIT 1",
+  const { rows: existingRows } = await pool.query<{
+    id: string;
+    status: string;
+    enrolled_via_company: boolean;
+  }>(
+    `SELECT id, status, enrolled_via_company
+       FROM enrollments WHERE student_id = $1 AND course_id = $2 LIMIT 1`,
     [studentId, courseId],
   );
   const existing = existingRows[0];
+  let outcome: AssignCourseOutcome = "created";
 
   if (existing?.status === "active") {
-    throw new Error("ENROLLMENT_EXISTS");
-  }
-
-  if (existing) {
+    // Particular → empresa: conserva progreso y completed_at; solo marca DC3.
+    if (enrolledViaCompany && !existing.enrolled_via_company) {
+      await pool.query(
+        `UPDATE enrollments
+           SET enrolled_via_company = TRUE,
+               delivery_mode = $2,
+               updated_at = NOW()
+         WHERE id = $1`,
+        [existing.id, deliveryMode],
+      );
+      outcome = "upgraded_to_company";
+    } else {
+      throw new Error("ENROLLMENT_EXISTS");
+    }
+  } else if (existing) {
     await pool.query(
       `UPDATE enrollments
        SET status = 'active',
@@ -450,6 +469,7 @@ export async function assignCourseToStudent(
        WHERE id = $1`,
       [existing.id, enrolledViaCompany, deliveryMode],
     );
+    outcome = "reactivated";
   } else {
     await pool.query(
       `INSERT INTO enrollments (student_id, course_id, status, enrolled_via_company, delivery_mode)
@@ -464,7 +484,7 @@ export async function assignCourseToStudent(
     throw new Error("ENROLLMENT_CREATE_FAILED");
   }
 
-  return enrollment;
+  return { enrollment, outcome };
 }
 
 export async function revokeStudentEnrollment(
