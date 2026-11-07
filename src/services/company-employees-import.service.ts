@@ -37,7 +37,8 @@ export interface CompanyEmployeeImportRowResult {
   curp: string;
   name: string;
   email: string;
-  status: "created" | "existing" | "linked" | "error";
+  /** updated = empleado ya existía y se guardó/actualizó Guía V del año elegido. */
+  status: "created" | "existing" | "updated" | "linked" | "error";
   studentId?: string;
   message?: string;
 }
@@ -47,8 +48,11 @@ export interface CompanyEmployeeImportResult {
   totalRows: number;
   created: number;
   existing: number;
+  /** Empleados existentes a los que se les guardó Guía V del año seleccionado. */
+  updated: number;
   linked: number;
   errors: number;
+  evaluationYear: number | null;
   welcomeEmailSent: boolean;
   rows: CompanyEmployeeImportRowResult[];
 }
@@ -282,8 +286,10 @@ export class CompanyEmployeesImportService {
     const seen = new Set<string>();
     let created = 0;
     let existing = 0;
+    let updated = 0;
     let linked = 0;
     let errors = 0;
+    const guia5Year = options.evaluationYear ?? null;
 
     for (const { rowNumber, values, guia5: guia5Raw } of raw) {
       const name = [values.paternalLastName, values.maternalLastName, values.firstNames]
@@ -383,10 +389,26 @@ export class CompanyEmployeesImportService {
 
         if (match) {
           if (match.companyId === companyId) {
+            const hadGuia5 = Object.keys(guia5).length > 0;
             await saveGuia5(match.id);
             await applyStpsIfPresent(match.id);
-            existing += 1;
-            rows.push({ ...base, status: "existing", studentId: match.id, message: "Ya existe en esta empresa" });
+            if (hadGuia5) {
+              updated += 1;
+              rows.push({
+                ...base,
+                status: "updated",
+                studentId: match.id,
+                message: `Empleado existente · Guía V guardada para ${guia5Year}`,
+              });
+            } else {
+              existing += 1;
+              rows.push({
+                ...base,
+                status: "existing",
+                studentId: match.id,
+                message: "Ya existe en esta empresa",
+              });
+            }
           } else if (!match.companyId) {
             // Existía sin empresa: se vincula (sin tocar contraseña ni datos) y se guarda su Guía V.
             const ok = await linkStudentToCompanyWithGuia5({
@@ -461,8 +483,10 @@ export class CompanyEmployeesImportService {
       totalRows: raw.length,
       created,
       existing,
+      updated,
       linked,
       errors,
+      evaluationYear: guia5Year,
       welcomeEmailSent: sendWelcomeEmail && created > 0,
       rows,
     };
