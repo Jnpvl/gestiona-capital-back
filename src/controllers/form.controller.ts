@@ -97,6 +97,7 @@ export class FormController {
           param(req, "id"),
           param(req, "studentId"),
           param(req, "formKey"),
+          parseEvaluationYearQuery(req.query.year),
         ),
       );
     } catch (error) {
@@ -120,6 +121,7 @@ export class FormController {
           param(req, "formKey"),
           body.answers as Record<string, unknown>,
           scope.staffId ?? null,
+          { evaluationYear: parseEvaluationYearQuery(req.query.year) },
         ),
       );
     } catch (error) {

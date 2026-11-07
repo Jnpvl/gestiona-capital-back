@@ -209,16 +209,16 @@ export class FormService {
     };
   }
 
-  async employeeFormDetail(companyId: string, studentId: string, formKey: string) {
+  async employeeFormDetail(companyId: string, studentId: string, formKey: string, evaluationYear?: number) {
     if (!isFormKey(formKey)) throw new AppError(404, "Formulario no encontrado", "FORM_NOT_FOUND");
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
-    const data = await findEmployeeFormAnswers(companyId, studentId, formKey);
+    const data = await findEmployeeFormAnswers(companyId, studentId, formKey, evaluationYear);
     if (!data) {
       // Sin datos aún: se puede aplicar (Guía V siempre; I/II/III si hay asignación).
       const applicable =
         formKey === "nom035_guia5" ||
-        (await findLatestResponseForEdit(companyId, studentId, formKey)) != null;
+        (await findLatestResponseForEdit(companyId, studentId, formKey, evaluationYear)) != null;
       if (applicable) {
         return {
           formKey,
@@ -377,7 +377,7 @@ export class FormService {
         return { formKey, answers, status: completes ? "completed" : "in_progress", updatedAt: null };
       }
     }
-    return this.employeeFormDetail(companyId, studentId, formKey);
+    return this.employeeFormDetail(companyId, studentId, formKey, evaluationYear);
   }
 
   async assign(

@@ -98,6 +98,7 @@ export const companyEmployeeImportRowSchema = z.object({
 export type CompanyEmployeeImportRow = z.infer<typeof companyEmployeeImportRowSchema>;
 
 export const companyEmployeeImportOptionsSchema = z.object({
+  evaluationYear: z.coerce.number().int().min(2000).max(2100).optional(),
   sendWelcomeEmail: z
     .union([z.boolean(), z.enum(["true", "false", "1", "0", "on"])])
     .optional()
