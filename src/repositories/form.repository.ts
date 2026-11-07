@@ -84,13 +84,22 @@ export async function findAssignmentsByCompany(
 
 /** Años con al menos una guía asignada (I/II/III) a la empresa. */
 export async function findCompanyEvaluationYears(companyId: string): Promise<number[]> {
+  // Incluye años con Guías I/II/III asignadas y también años solo con Guía V capturada.
   const { rows } = await pool.query<{ y: number }>(
-    `SELECT DISTINCT evaluation_year AS y
-       FROM form_assignments
-      WHERE company_id = $1
-        AND EXISTS (
-          SELECT 1 FROM UNNEST(form_keys) AS k WHERE k <> 'nom035_guia5'
-        )
+    `SELECT DISTINCT y
+       FROM (
+         SELECT evaluation_year AS y
+           FROM form_assignments
+          WHERE company_id = $1
+            AND EXISTS (
+              SELECT 1 FROM UNNEST(form_keys) AS k WHERE k <> 'nom035_guia5'
+            )
+         UNION
+         SELECT evaluation_year AS y
+           FROM employee_guia5_data
+          WHERE company_id = $1
+            AND answers <> '{}'::jsonb
+       ) years
       ORDER BY y DESC`,
     [companyId],
   );

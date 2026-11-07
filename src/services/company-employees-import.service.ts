@@ -63,12 +63,19 @@ type ColumnKey =
   | "currentPosition"
   | "stpsOccupationCode";
 
-/** Extrae el código STPS de celdas tipo "01.1" o "01.1 — Nombre". */
+/**
+ * Extrae el código STPS de celdas tipo "01.1" o "01.1 — Nombre".
+ * Excel suele convertir "05" en el número 5; se normaliza a "05".
+ */
 function parseStpsOccupationCode(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   const code = trimmed.split(/\s*[—\-–|]\s*/)[0]?.trim() ?? trimmed;
-  return code || null;
+  if (!code) return null;
+  const match = code.match(/^(\d+)(?:\.(\d+))?$/);
+  if (!match) return code;
+  const area = match[1].padStart(2, "0");
+  return match[2] != null ? `${area}.${match[2]}` : area;
 }
 
 const GUIA5_HEADER_INDEX = new Map(
@@ -215,7 +222,7 @@ export class CompanyEmployeesImportService {
   async importExcel(
     companyId: string,
     fileBuffer: Buffer,
-    options: { createdByStaffId?: string | null; sendWelcomeEmail?: boolean } = {},
+    options: { createdByStaffId?: string | null; sendWelcomeEmail?: boolean; evaluationYear?: number } = {},
   ): Promise<CompanyEmployeeImportResult> {
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
@@ -264,6 +271,11 @@ export class CompanyEmployeesImportService {
 
     if (raw.length === 0) {
       throw new AppError(400, "El Excel no tiene filas de empleados", "EXCEL_EMPTY");
+    }
+
+    if (raw.some((row) => Object.keys(row.guia5).length > 0) &&
+        (!Number.isInteger(options.evaluationYear) || options.evaluationYear! < 2000 || options.evaluationYear! > 2100)) {
+      throw new AppError(400, "Selecciona el año de evaluación al importar datos de Guía V", "EVALUATION_YEAR_REQUIRED");
     }
 
     const rows: CompanyEmployeeImportRowResult[] = [];
@@ -338,6 +350,7 @@ export class CompanyEmployeesImportService {
               companyId,
               studentId,
               answers: guia5,
+              evaluationYear: options.evaluationYear,
               completed: GUIA5_REQUIRED_IDS.every((id) => !!guia5[id]),
               staffId: options.createdByStaffId ?? null,
               requiredCount: GUIA5_REQUIRED_IDS.length,

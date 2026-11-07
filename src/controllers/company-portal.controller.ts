@@ -117,7 +117,7 @@ export class CompanyPortalController {
         res.json({ employees: {} });
         return;
       }
-      res.json(await formService.employeesFormsSummary(companyId, rows.map((r) => r.id)));
+      res.json(await formService.employeesFormsSummary(companyId, rows.map((r) => r.id), parseEvaluationYearQuery(req.query.year)));
     } catch (error) {
       next(error);
     }
@@ -131,7 +131,7 @@ export class CompanyPortalController {
       if (!student || student.companyId !== companyId) {
         throw new AppError(404, "Empleado no encontrado", "EMPLOYEE_NOT_FOUND");
       }
-      res.json(await formService.employeeFormDetail(companyId, studentId, param(req, "formKey")));
+      res.json(await formService.employeeFormDetail(companyId, studentId, param(req, "formKey"), parseEvaluationYearQuery(req.query.year)));
     } catch (error) {
       next(error);
     }

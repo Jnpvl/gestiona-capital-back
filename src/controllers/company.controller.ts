@@ -43,11 +43,11 @@ export class CompanyController {
         return;
       }
       const scope = getStaffScopeFromRequest(req);
-      const { sendWelcomeEmail } = companyEmployeeImportOptionsSchema.parse(req.body ?? {});
+      const { sendWelcomeEmail, evaluationYear } = companyEmployeeImportOptionsSchema.parse(req.body ?? {});
       const result = await companyEmployeesImportService.importExcel(
         getParamId(req),
         req.file.buffer,
-        { createdByStaffId: scope.staffId, sendWelcomeEmail },
+        { createdByStaffId: scope.staffId, sendWelcomeEmail, evaluationYear },
       );
       res.json(result);
     } catch (error) {
