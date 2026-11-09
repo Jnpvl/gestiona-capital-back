@@ -15,6 +15,11 @@ export interface FormQuestion {
   /** Número de ítem según la norma (Guías II y III). */
   number?: number;
   text: string;
+  /**
+   * Texto para reportes/resultados cuando el documento lo pide distinto al del cuestionario.
+   * Si no existe, se usa `text`.
+   */
+  resultQuestion?: string;
   /** Por defecto se usa la escala del formulario. */
   kind?: "yesno" | "choice" | "text";
   options?: FormOption[];

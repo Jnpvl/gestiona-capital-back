@@ -134,6 +134,7 @@ export class FormService {
         level: summary?.level ?? null,
         levelLabel: summary?.level ? RISK_LEVEL_LABEL[summary.level] : null,
         requiresClinicalAssessment: summary?.requiresClinicalAssessment ?? null,
+        traumaticEventReported: summary?.traumaticEventReported ?? null,
         resultText: summary?.resultText ?? null,
         action: summary?.action ?? "",
         categories: s.categories ?? [],
@@ -147,7 +148,7 @@ export class FormService {
       if (!isFormKey(row.formKey)) continue;
       const form = FORM_DEFINITIONS[row.formKey];
       let score = row.score;
-      if (!isCurrentScore(score)) {
+      if (!isCurrentScore(score) || (row.formKey === "nom035_guia1" && typeof (score as FormScoreResult)?.traumaticEventReported !== "boolean")) {
         // Respuestas previas sin calificación o con formato anterior: se recalcula y guarda.
         score = scoreForm(form, row.answers);
         await updateFormResponseScore(row.responseId, score);
@@ -156,6 +157,9 @@ export class FormService {
     }
     const employeeIds = new Set(employees.map(e => e.id));
     const profiles = demographics.filter(row => employeeIds.has(row.student_id));
+    const genderByStudent = new Map(
+      profiles.map((row) => [row.student_id, row.answers.sexo?.trim() || ""] as const),
+    );
     const riskGuides = (["nom035_guia2", "nom035_guia3"] as const).filter(key => assigned.includes(key));
     const demographicSummary = {
       riskGuides,
@@ -188,12 +192,60 @@ export class FormService {
         };
       })),
     };
+
+    /** Conteos de "Sí" por pregunta de Guía I, segmentados por sexo (Guía V). */
+    const guide1Completed = completed.filter((row) => row.formKey === "nom035_guia1");
+    const emptyGenderCounts = () => ({
+      men: 0,
+      women: 0,
+      other: 0,
+      unspecified: 0,
+      total: 0,
+    });
+    function bumpGender(
+      counts: ReturnType<typeof emptyGenderCounts>,
+      studentId: string,
+    ) {
+      const sexo = genderByStudent.get(studentId) ?? "";
+      if (sexo === "Masculino") counts.men++;
+      else if (sexo === "Femenino") counts.women++;
+      else if (sexo) counts.other++;
+      else counts.unspecified++;
+      counts.total++;
+    }
+    const guide1ResponseSummary = assigned.includes("nom035_guia1")
+      ? {
+          evaluated: guide1Completed.length,
+          sections: FORM_DEFINITIONS.nom035_guia1.sections.map((section) => {
+            const questions = section.questions.map((question) => {
+              const counts = emptyGenderCounts();
+              for (const row of guide1Completed) {
+                if (row.answers[question.id] === "si") bumpGender(counts, row.studentId);
+              }
+              return {
+                id: question.id,
+                text: question.resultQuestion ?? question.text,
+                ...counts,
+              };
+            });
+            return {
+              id: section.id,
+              title: section.title,
+              instructions: section.instructions ?? null,
+              totalYes: questions.reduce((sum, question) => sum + question.total, 0),
+              questions,
+            };
+          }),
+        }
+      : null;
+
     const guides = ["nom035_guia1", "nom035_guia2", "nom035_guia3"] as const;
     return {
       evaluationYear: year,
       evaluationYears,
       assignedFormKeys: assigned,
       demographics: demographicSummary,
+      guide1ResponseSummary,
       employees: employees.map((e) => {
         const list = statuses[e.id] ?? [];
         const statusOf = (k: string) => list.find((f) => f.formKey === k)?.status ?? "not_applied";

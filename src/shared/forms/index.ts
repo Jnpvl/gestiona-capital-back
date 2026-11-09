@@ -116,6 +116,7 @@ export interface ScoredGroup {
 }
 
 export interface FormScoreResult {
+  traumaticEventReported?: boolean;
   final?: { value: number; level: RiskLevel; action: string };
   categories?: ScoredGroup[];
   domains?: (ScoredGroup & { categoryKey: string })[];
@@ -126,6 +127,7 @@ export interface FormScoreResult {
 
 /** Resumen corto para íconos y tablas. */
 export interface FormResultSummary {
+  traumaticEventReported?: boolean;
   total?: number;
   level?: RiskLevel;
   requiresClinicalAssessment?: boolean;
@@ -140,6 +142,7 @@ export function summarizeScore(score: FormScoreResult | null | undefined): FormR
   if (score.requiresClinicalAssessment != null) {
     return {
       requiresClinicalAssessment: score.requiresClinicalAssessment,
+      traumaticEventReported: score.traumaticEventReported,
       resultText:
         score.resultText ??
         (score.requiresClinicalAssessment ? CLINICAL_RESULT_TEXT.requires : CLINICAL_RESULT_TEXT.notRequired),
@@ -163,6 +166,7 @@ export function scoreForm(form: FormDefinition, answers: FormAnswers): FormScore
       rule.thresholds.some((t) => yesIn(t.sectionId) >= t.minYes);
     return {
       requiresClinicalAssessment: requires,
+      traumaticEventReported: yesIn(rule.screeningSection) > 0,
       resultText: requires ? CLINICAL_RESULT_TEXT.requires : CLINICAL_RESULT_TEXT.notRequired,
     };
   }
