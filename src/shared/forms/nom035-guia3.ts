@@ -880,7 +880,7 @@ export const nom035Guia3: FormDefinition = {
           },
           {
             "key": "pertenencia",
-            "name": "Insuficiente sentido de pertenencia e, inestabilidad",
+            "name": "Insuficiente sentido de pertenencia e inestabilidad",
             "cutoffs": [
               4,
               6,
