@@ -195,37 +195,45 @@ export class FormService {
 
     /** Conteos de "Sí" por pregunta de Guía I, segmentados por sexo (Guía V). */
     const guide1Completed = completed.filter((row) => row.formKey === "nom035_guia1");
-    const emptyGenderCounts = () => ({
-      men: 0,
-      women: 0,
-      other: 0,
-      unspecified: 0,
-      total: 0,
+    const employeeNameById = new Map(employees.map((employee) => [employee.id, employee.name]));
+    type Guide1Person = { studentId: string; name: string };
+    const emptyGenderBucket = () => ({
+      men: [] as Guide1Person[],
+      women: [] as Guide1Person[],
+      other: [] as Guide1Person[],
+      unspecified: [] as Guide1Person[],
+      all: [] as Guide1Person[],
     });
-    function bumpGender(
-      counts: ReturnType<typeof emptyGenderCounts>,
-      studentId: string,
-    ) {
+    function pushGender(bucket: ReturnType<typeof emptyGenderBucket>, studentId: string) {
+      const person = {
+        studentId,
+        name: employeeNameById.get(studentId) ?? "—",
+      };
       const sexo = genderByStudent.get(studentId) ?? "";
-      if (sexo === "Masculino") counts.men++;
-      else if (sexo === "Femenino") counts.women++;
-      else if (sexo) counts.other++;
-      else counts.unspecified++;
-      counts.total++;
+      if (sexo === "Masculino") bucket.men.push(person);
+      else if (sexo === "Femenino") bucket.women.push(person);
+      else if (sexo) bucket.other.push(person);
+      else bucket.unspecified.push(person);
+      bucket.all.push(person);
     }
     const guide1ResponseSummary = assigned.includes("nom035_guia1")
       ? {
           evaluated: guide1Completed.length,
           sections: FORM_DEFINITIONS.nom035_guia1.sections.map((section) => {
             const questions = section.questions.map((question) => {
-              const counts = emptyGenderCounts();
+              const people = emptyGenderBucket();
               for (const row of guide1Completed) {
-                if (row.answers[question.id] === "si") bumpGender(counts, row.studentId);
+                if (row.answers[question.id] === "si") pushGender(people, row.studentId);
               }
               return {
                 id: question.id,
                 text: question.resultQuestion ?? question.text,
-                ...counts,
+                men: people.men.length,
+                women: people.women.length,
+                other: people.other.length,
+                unspecified: people.unspecified.length,
+                total: people.all.length,
+                people,
               };
             });
             return {
