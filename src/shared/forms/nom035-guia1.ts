@@ -16,27 +16,33 @@ export const nom035Guia1: FormDefinition = {
       "questions": [
         {
           "id": "g1_s1_1",
-          "text": "Accidente que tenga como consecuencia la muerte, la pérdida de un miembro o una lesión grave?"
+          "text": "Accidente que tenga como consecuencia la muerte, la pérdida de un miembro o una lesión grave?",
+          "resultQuestion": "Accidente que tenga como consecuencia la muerte, la pérdida de un miembro o una lesión grave."
         },
         {
           "id": "g1_s1_2",
-          "text": "Asaltos?"
+          "text": "Asaltos?",
+          "resultQuestion": "Asaltos."
         },
         {
           "id": "g1_s1_3",
-          "text": "Actos violentos que derivaron en lesiones graves?"
+          "text": "Actos violentos que derivaron en lesiones graves?",
+          "resultQuestion": "Actos violentos que derivaron en lesiones graves."
         },
         {
           "id": "g1_s1_4",
-          "text": "Secuestro?"
+          "text": "Secuestro?",
+          "resultQuestion": "Secuestro."
         },
         {
           "id": "g1_s1_5",
-          "text": "Amenazas?, o"
+          "text": "Amenazas?, o",
+          "resultQuestion": "Amenazas."
         },
         {
           "id": "g1_s1_6",
-          "text": "Cualquier otro que ponga en riesgo su vida o salud, y/o la de otras personas?"
+          "text": "Cualquier otro que ponga en riesgo su vida o salud, y/o la de otras personas?",
+          "resultQuestion": "Cualquier otro que ponga en riesgo su vida o salud, y/o la de otras personas."
         }
       ]
     },
