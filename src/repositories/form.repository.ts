@@ -114,6 +114,15 @@ export async function countCompanyEmployees(companyId: string): Promise<number> 
   return Number(rows[0]?.count ?? 0);
 }
 
+/** Muestreo por guía (hoy solo Guía III). */
+export type GuideSamplingMeta = {
+  mode: "census" | "sample";
+  populationN: number;
+  sampleN: number;
+  stratumField: string;
+  selectedStudentIds: string[];
+};
+
 /** Crea la asignación y una respuesta pendiente por empleado activo y formulario. */
 export async function createAssignment(input: {
   companyId: string;
@@ -122,35 +131,59 @@ export async function createAssignment(input: {
   evaluationYear: number;
   dueAt: Date | null;
   createdByStaffId: string | null;
+  /** Si Guía III va por muestra, solo estos empleados reciben form_responses de esa guía. */
+  sampling?: Record<string, GuideSamplingMeta>;
 }): Promise<FormAssignmentSummary> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const sampling = input.sampling ?? {};
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO form_assignments (company_id, form_keys, form_modes, evaluation_year, due_at, created_by_staff_id)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6)
+      `INSERT INTO form_assignments (company_id, form_keys, form_modes, sampling, evaluation_year, due_at, created_by_staff_id)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6, $7)
        RETURNING id`,
       [
         input.companyId,
         input.formKeys,
         JSON.stringify(input.formModes),
+        JSON.stringify(sampling),
         input.evaluationYear,
         input.dueAt,
         input.createdByStaffId,
       ],
     );
     const assignmentId = rows[0].id;
-    await client.query(
-      `INSERT INTO form_responses (assignment_id, student_id, form_key)
-       SELECT $1, s.id, k
-       FROM students s
-       CROSS JOIN UNNEST($2::text[]) AS k
-       WHERE s.company_id = $3 AND s.active = TRUE
-         -- Guía V la llena solo el admin (carga masiva); nunca se asigna al empleado.
-         AND k <> 'nom035_guia5'
-       ON CONFLICT DO NOTHING`,
-      [assignmentId, input.formKeys, input.companyId],
-    );
+    const guia3Sample = sampling.nom035_guia3?.mode === "sample"
+      ? sampling.nom035_guia3.selectedStudentIds
+      : null;
+    const keysForAll = guia3Sample
+      ? input.formKeys.filter((k) => k !== "nom035_guia3")
+      : input.formKeys;
+    if (keysForAll.length > 0) {
+      await client.query(
+        `INSERT INTO form_responses (assignment_id, student_id, form_key)
+         SELECT $1, s.id, k
+         FROM students s
+         CROSS JOIN UNNEST($2::text[]) AS k
+         WHERE s.company_id = $3 AND s.active = TRUE
+           AND k <> 'nom035_guia5'
+         ON CONFLICT DO NOTHING`,
+        [assignmentId, keysForAll, input.companyId],
+      );
+    }
+    if (guia3Sample && input.formKeys.includes("nom035_guia3")) {
+      if (guia3Sample.length > 0) {
+        await client.query(
+          `INSERT INTO form_responses (assignment_id, student_id, form_key)
+           SELECT $1, s.id, 'nom035_guia3'
+           FROM students s
+           WHERE s.company_id = $2 AND s.active = TRUE
+             AND s.id = ANY($3::uuid[])
+           ON CONFLICT DO NOTHING`,
+          [assignmentId, input.companyId, guia3Sample],
+        );
+      }
+    }
     await client.query("COMMIT");
     const created = await findAssignmentById(assignmentId);
     if (!created) throw new Error("ASSIGNMENT_CREATE_FAILED");
@@ -161,6 +194,34 @@ export async function createAssignment(input: {
   } finally {
     client.release();
   }
+}
+
+/** Muestreo de la asignación más reciente que incluye la guía en el año. */
+export async function findGuideSampling(
+  companyId: string,
+  formKey: string,
+  evaluationYear: number = currentEvaluationYear(),
+): Promise<GuideSamplingMeta | null> {
+  const { rows } = await pool.query<{ sampling: Record<string, GuideSamplingMeta> | null }>(
+    `SELECT a.sampling
+       FROM form_assignments a
+      WHERE a.company_id = $1 AND a.evaluation_year = $2
+        AND $3 = ANY(a.form_keys)
+      ORDER BY a.created_at DESC
+      LIMIT 1`,
+    [companyId, evaluationYear, formKey],
+  );
+  const meta = rows[0]?.sampling?.[formKey];
+  if (!meta || (meta.mode !== "census" && meta.mode !== "sample")) return null;
+  return {
+    mode: meta.mode,
+    populationN: Number(meta.populationN) || 0,
+    sampleN: Number(meta.sampleN) || 0,
+    stratumField: meta.stratumField || "sexo",
+    selectedStudentIds: Array.isArray(meta.selectedStudentIds)
+      ? meta.selectedStudentIds.map(String)
+      : [],
+  };
 }
 
 export async function findAssignmentById(id: string): Promise<FormAssignmentSummary | null> {
@@ -211,7 +272,12 @@ export async function upsertEmployeeGuia5(input: {
   );
 }
 
-export type EmployeeFormStatus = "completed" | "partial" | "pending" | "not_applied";
+export type EmployeeFormStatus =
+  | "completed"
+  | "partial"
+  | "pending"
+  | "not_applied"
+  | "not_selected";
 
 export interface EmployeeFormState {
   formKey: string;
@@ -280,10 +346,30 @@ export async function findCompanyEmployeesFormsSummary(
   );
   const applicable = ["nom035_guia5", ...assigned.map((r) => r.form_key)];
   const order = ["nom035_guia1", "nom035_guia2", "nom035_guia3", "nom035_guia5"];
+  const guia3Sampling = assigned.some((r) => r.form_key === "nom035_guia3")
+    ? await findGuideSampling(companyId, "nom035_guia3", evaluationYear)
+    : null;
+  const guia3Selected =
+    guia3Sampling?.mode === "sample"
+      ? new Set(guia3Sampling.selectedStudentIds)
+      : null;
   for (const id of ids) {
     const list = (out[id] ??= []);
     for (const key of applicable) {
-      if (!list.some((f) => f.formKey === key)) list.push({ formKey: key, status: "not_applied" });
+      if (list.some((f) => f.formKey === key)) continue;
+      if (key === "nom035_guia3" && guia3Selected && !guia3Selected.has(id)) {
+        list.push({ formKey: key, status: "not_selected" });
+      } else {
+        list.push({ formKey: key, status: "not_applied" });
+      }
+    }
+    // Si quedó not_applied por falta de response pero está fuera de muestra, corrige.
+    if (guia3Selected && !guia3Selected.has(id)) {
+      const g3 = list.find((f) => f.formKey === "nom035_guia3");
+      if (g3 && (g3.status === "not_applied" || g3.status === "pending")) {
+        g3.status = "not_selected";
+        delete g3.answers;
+      }
     }
     list.sort((a, b) => order.indexOf(a.formKey) - order.indexOf(b.formKey));
   }
@@ -564,6 +650,15 @@ export async function findAllCompletedResponses(): Promise<
   return rows.map((r) => ({ id: r.id, formKey: r.form_key, answers: r.answers ?? {}, score: r.score }));
 }
 
+/** IDs de empleados activos de la empresa (universo para censo/muestra). */
+export async function findCompanyActiveEmployeeIds(companyId: string): Promise<string[]> {
+  const { rows } = await pool.query<{ id: string }>(
+    "SELECT id FROM students WHERE company_id = $1 AND active = TRUE ORDER BY id",
+    [companyId],
+  );
+  return rows.map((r) => r.id);
+}
+
 /** Empleados de la empresa (para el dashboard). */
 export async function findCompanyEmployeesBasic(companyId: string): Promise<{ id: string; name: string }[]> {
   const { rows } = await pool.query<{
@@ -612,6 +707,7 @@ export interface FormGuideProgress {
   completed: number;
   partial: number;
   pending: number;
+  sampling?: GuideSamplingMeta | null;
 }
 
 /**
@@ -628,20 +724,21 @@ export async function findCompanyGuideProgress(
     assignment_id: string;
     created_at: Date;
     due_at: Date | null;
+    sampling: Record<string, GuideSamplingMeta> | null;
     employees_total: string;
     completed: string;
     partial: string;
   }>(
     `WITH latest AS (
        SELECT DISTINCT ON (k) k AS form_key, a.id AS assignment_id, a.created_at, a.due_at,
-              ${MODE_SQL("a", "k")} AS mode
+              a.sampling, ${MODE_SQL("a", "k")} AS mode
          FROM form_assignments a CROSS JOIN UNNEST(a.form_keys) AS k
         WHERE a.company_id = $1 AND a.evaluation_year = $2 AND k <> 'nom035_guia5'
         ORDER BY k, a.created_at DESC
      ), emp AS (
        SELECT id FROM students WHERE company_id = $1 AND active = TRUE
      )
-     SELECT l.form_key, l.mode, l.assignment_id, l.created_at, l.due_at,
+     SELECT l.form_key, l.mode, l.assignment_id, l.created_at, l.due_at, l.sampling,
             (SELECT COUNT(*) FROM emp) AS employees_total,
             COUNT(r.id) FILTER (WHERE r.status = 'completed') AS completed,
             COUNT(r.id) FILTER (WHERE r.status = 'in_progress') AS partial
@@ -649,12 +746,28 @@ export async function findCompanyGuideProgress(
        LEFT JOIN form_responses r
          ON r.assignment_id = l.assignment_id AND r.form_key = l.form_key
         AND r.student_id IN (SELECT id FROM emp)
-      GROUP BY l.form_key, l.mode, l.assignment_id, l.created_at, l.due_at
+      GROUP BY l.form_key, l.mode, l.assignment_id, l.created_at, l.due_at, l.sampling
       ORDER BY l.form_key`,
     [companyId, evaluationYear],
   );
   return rows.map((r) => {
-    const total = Number(r.employees_total);
+    const raw = r.sampling?.[r.form_key];
+    const sampling: GuideSamplingMeta | null =
+      raw && (raw.mode === "census" || raw.mode === "sample")
+        ? {
+            mode: raw.mode,
+            populationN: Number(raw.populationN) || 0,
+            sampleN: Number(raw.sampleN) || 0,
+            stratumField: raw.stratumField || "sexo",
+            selectedStudentIds: Array.isArray(raw.selectedStudentIds)
+              ? raw.selectedStudentIds.map(String)
+              : [],
+          }
+        : null;
+    const total =
+      sampling?.mode === "sample"
+        ? sampling.sampleN || sampling.selectedStudentIds.length
+        : Number(r.employees_total);
     const completed = Number(r.completed);
     const partial = Number(r.partial);
     return {
@@ -667,6 +780,7 @@ export async function findCompanyGuideProgress(
       completed,
       partial,
       pending: Math.max(total - completed - partial, 0),
+      sampling,
     };
   });
 }

@@ -18,7 +18,11 @@ export class FormController {
   async downloadTemplate(req: Request, res: Response, next: NextFunction) {
     try {
       const key = param(req, "formKey");
-      const buffer = await companyFormsImportService.template(param(req, "id"), key);
+      const buffer = await companyFormsImportService.template(
+        param(req, "id"),
+        key,
+        parseEvaluationYearQuery(req.query.year),
+      );
       res.type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet").attachment(`plantilla-${key}.xlsx`).send(buffer);
     } catch (error) { next(error); }
   }

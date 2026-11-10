@@ -1,7 +1,12 @@
 import ExcelJS from "exceljs";
 import { AppError } from "../errors/app-error";
 import { formService } from "./form.service";
-import { findCompanyEmployeesBasic, findEmployeeFormAnswers } from "../repositories/form.repository";
+import {
+  findCompanyEmployeesBasic,
+  findEmployeeFormAnswers,
+  findGuideSampling,
+  currentEvaluationYear,
+} from "../repositories/form.repository";
 import { FORM_DEFINITIONS, isFormKey, FREQUENCY_OPTIONS, YES_NO_OPTIONS, isSectionVisible } from "../shared/forms";
 import type { FormDefinition, FormQuestion } from "../shared/forms";
 import { cellText, loadFirstSheet, normalizeHeader } from "../shared/utils/excel";
@@ -34,10 +39,18 @@ export function parseImportAnswers(form: FormDefinition, raw: Record<string, str
 }
 
 export class CompanyFormsImportService {
-  async template(companyId: string, key: string) {
+  async template(companyId: string, key: string, evaluationYear?: number) {
     const form = definition(key);
-    await formService.getCompanyForms(companyId);
-    const employees = await findCompanyEmployeesBasic(companyId);
+    const year = evaluationYear ?? currentEvaluationYear();
+    await formService.getCompanyForms(companyId, year);
+    let employees = await findCompanyEmployeesBasic(companyId);
+    if (key === "nom035_guia3") {
+      const sampling = await findGuideSampling(companyId, "nom035_guia3", year);
+      if (sampling?.mode === "sample") {
+        const selected = new Set(sampling.selectedStudentIds);
+        employees = employees.filter((e) => selected.has(e.id));
+      }
+    }
     const book = new ExcelJS.Workbook();
     const sheet = book.addWorksheet("Respuestas", { views: [{ state: "frozen", xSplit: 2, ySplit: 1 }] });
     const questions = form.sections.flatMap(s => s.questions);
@@ -104,7 +117,11 @@ export class CompanyFormsImportService {
         "FORM_NOT_ASSIGNED",
       );
     }
-    const employees = new Map((await findCompanyEmployeesBasic(companyId)).map(e => [e.id, e.name]));
+    const employees = new Map((await findCompanyEmployeesBasic(companyId)).map((e) => [e.id, e.name]));
+    const sampleSelected =
+      key === "nom035_guia3"
+        ? await findGuideSampling(companyId, "nom035_guia3", year)
+        : null;
     const { sheet, headers: rawHeaders } = await loadFirstSheet(buffer);
     // Acepta también las plantillas anteriores, que solo tenían el código.
     const headers = rawHeaders.map(header => header.split(" — ")[0].trim());
@@ -131,6 +148,13 @@ export class CompanyFormsImportService {
       const result = { row: n, employee: employees.get(id) ?? "Empleado no identificado", status: "error" as "valid" | "imported" | "skipped" | "error", message: "" };
       rows.push(result);
       if (!employees.has(id)) { result.message = "El ID no pertenece a un empleado de esta empresa"; continue; }
+      if (
+        sampleSelected?.mode === "sample" &&
+        !sampleSelected.selectedStudentIds.includes(id)
+      ) {
+        result.message = "No seleccionado para el muestreo de Guía III";
+        continue;
+      }
       if ((occurrences.get(id) ?? 0) > 1 || seen.has(id)) { result.message = "Empleado duplicado en el archivo"; continue; }
       seen.add(id);
       if (Object.values(raw).every(v => !v)) { result.status = "skipped"; result.message = "Sin respuestas"; continue; }

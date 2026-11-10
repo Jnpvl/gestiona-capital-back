@@ -9,12 +9,14 @@ import {
   findAssignmentsByCompany,
   findCompanyAssignedFormKeys,
   findCompanyCompletedResponses,
+  findCompanyActiveEmployeeIds,
   findCompanyEmployeesBasic,
   findCompanyEmployeesFormsSummary,
   findCompanyEvaluationYears,
   findCompanyGuideProgress,
   findCompanyGuidesInUse,
   findCompanyAssignedFormKeys as findAssignedKeys,
+  findGuideSampling,
   unassignCompanyGuide,
   findEmployeeFormAnswers,
   findLatestResponseForEdit,
@@ -24,6 +26,7 @@ import {
   setCompanyGuideMode,
   findStudentPendingForms,
   type FormMode,
+  type GuideSamplingMeta,
 } from "../repositories/form.repository";
 import {
   ASSIGNABLE_FORM_KEYS,
@@ -36,6 +39,7 @@ import {
   RISK_LEVEL_LABEL,
   FREQUENCY_OPTIONS,
   YES_NO_OPTIONS, suggestFormKeys } from "../shared/forms";
+import { buildCensusMeta, buildSampleMeta } from "../shared/forms/sampling";
 import type { FormKey, FormScoreResult } from "../shared/forms";
 
 /** La calificación guardada es válida si ya tiene el formato actual. */
@@ -118,14 +122,20 @@ export class FormService {
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
     const year = evaluationYear ?? currentEvaluationYear();
-    const [employees, assigned, statuses, completed, demographics, evaluationYears] = await Promise.all([
-      findCompanyEmployeesBasic(companyId),
-      findCompanyAssignedFormKeys(companyId, year),
-      findCompanyEmployeesFormsSummary(companyId, undefined, year),
-      findCompanyCompletedResponses(companyId, year),
-      findCompanyDemographics(companyId, year),
-      findCompanyEvaluationYears(companyId),
-    ]);
+    const [employees, assigned, statuses, completed, demographics, evaluationYears, guia3Sampling] =
+      await Promise.all([
+        findCompanyEmployeesBasic(companyId),
+        findCompanyAssignedFormKeys(companyId, year),
+        findCompanyEmployeesFormsSummary(companyId, undefined, year),
+        findCompanyCompletedResponses(companyId, year),
+        findCompanyDemographics(companyId, year),
+        findCompanyEvaluationYears(companyId),
+        findGuideSampling(companyId, "nom035_guia3", year),
+      ]);
+    const sampleSelected =
+      guia3Sampling?.mode === "sample"
+        ? new Set(guia3Sampling.selectedStudentIds)
+        : null;
     const resultBy = new Map<string, ReturnType<typeof buildResult>>();
     function buildResult(row: (typeof completed)[number], form: (typeof FORM_DEFINITIONS)[FormKey], s: FormScoreResult) {
       const summary = summarizeScore(s);
@@ -156,14 +166,22 @@ export class FormService {
       resultBy.set(`${row.studentId}:${row.formKey}`, buildResult(row, form, score as FormScoreResult));
     }
     const employeeIds = new Set(employees.map(e => e.id));
-    const profiles = demographics.filter(row => employeeIds.has(row.student_id));
+    // En muestreo, demografía del dashboard = solo seleccionados (Guía V de no seleccionados queda en BD).
+    const profiles = demographics.filter(
+      (row) => employeeIds.has(row.student_id) && (!sampleSelected || sampleSelected.has(row.student_id)),
+    );
     const genderByStudent = new Map(
-      profiles.map((row) => [row.student_id, row.answers.sexo?.trim() || ""] as const),
+      demographics
+        .filter((row) => employeeIds.has(row.student_id))
+        .map((row) => [row.student_id, row.answers.sexo?.trim() || ""] as const),
     );
     const riskGuides = (["nom035_guia2", "nom035_guia3"] as const).filter(key => assigned.includes(key));
+    const demographicUniverse = sampleSelected
+      ? employees.filter((e) => sampleSelected.has(e.id)).length
+      : employees.length;
     const demographicSummary = {
       riskGuides,
-      total: employees.length,
+      total: demographicUniverse,
       completed: profiles.filter(row => row.completed).length,
       partial: profiles.filter(row => !row.completed && Object.keys(row.answers).length > 0).length,
       fields: FORM_DEFINITIONS.nom035_guia5.sections.flatMap(section => section.questions.map(question => {
@@ -252,6 +270,9 @@ export class FormService {
       evaluationYear: year,
       evaluationYears,
       assignedFormKeys: assigned,
+      sampling: {
+        nom035_guia3: guia3Sampling,
+      },
       demographics: demographicSummary,
       guide1ResponseSummary,
       employees: employees.map((e) => {
@@ -259,9 +280,24 @@ export class FormService {
         const statusOf = (k: string) => list.find((f) => f.formKey === k)?.status ?? "not_applied";
         const forms: Record<string, unknown> = {};
         for (const k of guides) {
-          forms[k] = assigned.includes(k)
-            ? { status: statusOf(k), result: resultBy.get(`${e.id}:${k}`) ?? null }
-            : { status: "not_assigned", result: null };
+          if (!assigned.includes(k)) {
+            forms[k] = { status: "not_assigned", result: null };
+            continue;
+          }
+          let status = statusOf(k);
+          if (
+            k === "nom035_guia3" &&
+            sampleSelected &&
+            !sampleSelected.has(e.id) &&
+            status !== "completed" &&
+            status !== "partial"
+          ) {
+            status = "not_selected";
+          }
+          forms[k] = {
+            status,
+            result: status === "not_selected" ? null : resultBy.get(`${e.id}:${k}`) ?? null,
+          };
         }
         forms.nom035_guia5 = { status: statusOf("nom035_guia5"), result: null };
         return { studentId: e.id, employeeName: e.name, forms };
@@ -273,12 +309,27 @@ export class FormService {
     if (!isFormKey(formKey)) throw new AppError(404, "Formulario no encontrado", "FORM_NOT_FOUND");
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
-    const data = await findEmployeeFormAnswers(companyId, studentId, formKey, evaluationYear);
+    const year = evaluationYear ?? currentEvaluationYear();
+    if (formKey === "nom035_guia3") {
+      const sampling = await findGuideSampling(companyId, "nom035_guia3", year);
+      if (
+        sampling?.mode === "sample" &&
+        !sampling.selectedStudentIds.includes(studentId)
+      ) {
+        return {
+          formKey,
+          answers: {} as Record<string, string>,
+          status: "not_selected" as const,
+          updatedAt: null,
+        };
+      }
+    }
+    const data = await findEmployeeFormAnswers(companyId, studentId, formKey, year);
     if (!data) {
       // Sin datos aún: se puede aplicar (Guía V siempre; I/II/III si hay asignación).
       const applicable =
         formKey === "nom035_guia5" ||
-        (await findLatestResponseForEdit(companyId, studentId, formKey, evaluationYear)) != null;
+        (await findLatestResponseForEdit(companyId, studentId, formKey, year)) != null;
       if (applicable) {
         return {
           formKey,
@@ -317,6 +368,19 @@ export class FormService {
       throw new AppError(404, "El empleado no pertenece a esta empresa", "EMPLOYEE_NOT_FOUND");
     }
     const evaluationYear = opts.evaluationYear ?? currentEvaluationYear();
+    if (formKey === "nom035_guia3") {
+      const sampling = await findGuideSampling(companyId, "nom035_guia3", evaluationYear);
+      if (
+        sampling?.mode === "sample" &&
+        !sampling.selectedStudentIds.includes(studentId)
+      ) {
+        throw new AppError(
+          409,
+          "Guía III: el empleado no fue seleccionado para el muestreo",
+          "NOT_IN_SAMPLE",
+        );
+      }
+    }
     const form = FORM_DEFINITIONS[formKey];
     const questions = new Map(
       form.sections.flatMap((s) => s.questions.map((q) => [q.id, q] as const)),
@@ -445,6 +509,7 @@ export class FormService {
     input: {
       formKeys: FormKey[];
       modes?: Partial<Record<FormKey, FormMode>>;
+      guia3SamplingMode?: "census" | "sample";
       evaluationYear?: number;
       dueAt?: Date | null;
     },
@@ -464,6 +529,45 @@ export class FormService {
         [{ field: "formKeys", label: "Formularios", message: `las guías seleccionadas ya están asignadas para ${year}` }],
       );
     }
+
+    const sampling: Record<string, GuideSamplingMeta> = {};
+    if (newKeys.includes("nom035_guia3")) {
+      const mode = input.guia3SamplingMode ?? "census";
+      const [activeIds, demographics] = await Promise.all([
+        findCompanyActiveEmployeeIds(companyId),
+        findCompanyDemographics(companyId, year),
+      ]);
+      if (activeIds.length === 0) {
+        throw new AppError(
+          400,
+          "Guía III: no hay empleados activos para asignar",
+          "NO_ACTIVE_EMPLOYEES",
+          [{ field: "formKeys", label: "Guía III", message: "no hay empleados activos para asignar" }],
+        );
+      }
+      const sexoById = new Map(
+        demographics.map((d) => [d.student_id, d.answers.sexo?.trim() || ""] as const),
+      );
+      if (mode === "sample") {
+        const missingSexo = activeIds.filter((id) => !sexoById.get(id));
+        if (missingSexo.length > 0) {
+          throw new AppError(
+            400,
+            `Guía III (muestreo): falta sexo en Guía V de ${missingSexo.length} ${missingSexo.length === 1 ? "empleado" : "empleados"}. Carga la Guía V completa antes de armar la muestra.`,
+            "SAMPLE_REQUIRES_GUIA5",
+            [{
+              field: "guia3SamplingMode",
+              label: "Muestreo Guía III",
+              message: `falta sexo en Guía V de ${missingSexo.length} empleado(s)`,
+            }],
+          );
+        }
+        sampling.nom035_guia3 = buildSampleMeta(activeIds, (id) => sexoById.get(id) || "Sin dato");
+      } else {
+        sampling.nom035_guia3 = buildCensusMeta(activeIds);
+      }
+    }
+
     const assignment = await createAssignment({
       companyId,
       formKeys: newKeys,
@@ -471,10 +575,11 @@ export class FormService {
       evaluationYear: year,
       dueAt: input.dueAt ?? null,
       createdByStaffId,
+      sampling,
     });
     // TODO(formularios): enviar a cada empleado el enlace para responder (correo/WhatsApp).
     // Hook pendiente: notifyFormAssignment(assignment.id). No se envía nada por ahora.
-    return { assignment };
+    return { assignment, sampling: sampling.nom035_guia3 ?? null };
   }
 
   async setMode(companyId: string, formKey: string, mode: FormMode, evaluationYear?: number) {

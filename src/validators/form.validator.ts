@@ -23,6 +23,8 @@ export const createFormAssignmentSchema = z.object({
   modes: z
     .record(z.string(), z.enum(["admin_applied", "self"], { message: "Modo no válido" }))
     .optional(),
+  /** Censo o muestra representativa (solo aplica si se asigna Guía III). */
+  guia3SamplingMode: z.enum(["census", "sample"], { message: "Modo de muestreo no válido" }).optional(),
   evaluationYear: evaluationYearSchema.optional(),
   dueAt: z.coerce.date().optional().nullable(),
 });
