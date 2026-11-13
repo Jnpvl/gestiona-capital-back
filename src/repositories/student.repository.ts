@@ -152,10 +152,11 @@ function buildWhereClause(filters: ListStudentsFilters) {
   }
 
   if (filters.search) {
-    values.push(`%${filters.search.toLowerCase()}%`);
+    values.push(`%${filters.search.trim().toLowerCase()}%`);
     const index = values.length;
     conditions.push(
       `(LOWER(s.name) LIKE $${index}
+        OR s.id::text LIKE $${index}
         OR LOWER(s.email) LIKE $${index}
         OR LOWER(COALESCE(s.first_names, '')) LIKE $${index}
         OR LOWER(COALESCE(s.paternal_last_name, '')) LIKE $${index}

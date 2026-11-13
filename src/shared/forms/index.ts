@@ -1,6 +1,7 @@
 import { nom035Guia1 } from "./nom035-guia1";
 import { nom035Guia2 } from "./nom035-guia2";
 import { nom035Guia3 } from "./nom035-guia3";
+import { nom035Guia4 } from "./nom035-guia4";
 import { nom035Guia5 } from "./nom035-guia5";
 import type {
   FormAnswers,
@@ -29,16 +30,27 @@ export const FORM_DEFINITIONS: Record<FormKey, FormDefinition> = {
   nom035_guia1: nom035Guia1,
   nom035_guia2: nom035Guia2,
   nom035_guia3: nom035Guia3,
+  nom035_guia4: nom035Guia4,
   nom035_guia5: nom035Guia5,
 };
 
 export const FORM_KEYS = Object.keys(FORM_DEFINITIONS) as FormKey[];
 
+/** Guías documento (PDF): no se asignan ni generan respuestas; viven en el dashboard NOM-035. */
+export const DOCUMENT_FORM_KEYS: readonly FormKey[] = ["nom035_guia4"];
+
+export function isDocumentFormKey(key: string): boolean {
+  return (DOCUMENT_FORM_KEYS as readonly string[]).includes(key);
+}
+
 /**
- * Formularios que se pueden asignar a una empresa (los contestan los empleados).
- * Guía V queda fuera: la captura el admin en la carga masiva de empleados.
+ * Formularios que se pueden asignar a una empresa.
+ * Guía IV: documento fijo en NOM-035 (no se asigna).
+ * Guía V: la captura el admin en la carga masiva de empleados.
  */
-export const ASSIGNABLE_FORM_KEYS = FORM_KEYS.filter((k) => k !== "nom035_guia5");
+export const ASSIGNABLE_FORM_KEYS = FORM_KEYS.filter(
+  (k) => k !== "nom035_guia5" && k !== "nom035_guia4",
+);
 
 export function isFormKey(value: string): value is FormKey {
   return value in FORM_DEFINITIONS;

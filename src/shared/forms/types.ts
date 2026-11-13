@@ -1,4 +1,9 @@
-export type FormKey = "nom035_guia1" | "nom035_guia2" | "nom035_guia3" | "nom035_guia5";
+export type FormKey =
+  | "nom035_guia1"
+  | "nom035_guia2"
+  | "nom035_guia3"
+  | "nom035_guia4"
+  | "nom035_guia5";
 
 /** yesno: Sí/No (Guía I y preguntas filtro). frequency: Siempre…Nunca. none: ficha de datos. */
 export type FormScale = "yesno" | "frequency" | "none";
@@ -81,6 +86,11 @@ export interface FormDefinition {
   sections: FormSection[];
   scoring?: FormScoring;
   clinicalRule?: ClinicalRule;
+  /**
+   * Si existe, la vista previa muestra/descarga este PDF en lugar del cuestionario.
+   * Ruta pública del front (p. ej. /templates/nom035-guia4.pdf).
+   */
+  documentUrl?: string;
 }
 
 export type FormAnswers = Record<string, string>;

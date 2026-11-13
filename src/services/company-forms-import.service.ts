@@ -12,7 +12,9 @@ import type { FormDefinition, FormQuestion } from "../shared/forms";
 import { cellText, loadFirstSheet, normalizeHeader } from "../shared/utils/excel";
 
 function definition(key: string) {
-  if (!isFormKey(key) || key === "nom035_guia5") throw new AppError(400, "Selecciona la Guía I, II o III", "INVALID_FORM");
+  if (!isFormKey(key) || key === "nom035_guia5" || key === "nom035_guia4") {
+    throw new AppError(400, "Selecciona la Guía I, II o III", "INVALID_FORM");
+  }
   return FORM_DEFINITIONS[key];
 }
 export function questionOptions(form: FormDefinition, q: FormQuestion) {
