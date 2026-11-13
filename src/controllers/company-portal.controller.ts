@@ -155,6 +155,22 @@ export class CompanyPortalController {
       next(error);
     }
   }
+
+  async courses(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(await companyService.listCourses(companyIdOf(req)));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async courseDetail(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(await companyService.getCourseDetail(companyIdOf(req), param(req, "courseId")));
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const companyPortalController = new CompanyPortalController();

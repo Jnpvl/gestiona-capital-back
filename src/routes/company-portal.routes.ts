@@ -15,3 +15,5 @@ companyPortalRoutes.get("/employees/:studentId/forms/:formKey", (req, res, next)
 );
 companyPortalRoutes.get("/forms/results", (req, res, next) => c.results(req, res, next));
 companyPortalRoutes.get("/forms/:key", (req, res, next) => c.formDefinition(req, res, next));
+companyPortalRoutes.get("/courses", (req, res, next) => c.courses(req, res, next));
+companyPortalRoutes.get("/courses/:courseId", (req, res, next) => c.courseDetail(req, res, next));

@@ -159,16 +159,17 @@ export async function createAssignment(input: {
     const keysForAll = guia3Sample
       ? input.formKeys.filter((k) => k !== "nom035_guia3")
       : input.formKeys;
-    if (keysForAll.length > 0) {
+    // Guía V y documentos (Guía IV): no crean respuestas por empleado.
+    const responseKeys = keysForAll.filter((k) => k !== "nom035_guia5" && k !== "nom035_guia4");
+    if (responseKeys.length > 0) {
       await client.query(
         `INSERT INTO form_responses (assignment_id, student_id, form_key)
          SELECT $1, s.id, k
          FROM students s
          CROSS JOIN UNNEST($2::text[]) AS k
          WHERE s.company_id = $3 AND s.active = TRUE
-           AND k <> 'nom035_guia5'
          ON CONFLICT DO NOTHING`,
-        [assignmentId, keysForAll, input.companyId],
+        [assignmentId, responseKeys, input.companyId],
       );
     }
     if (guia3Sample && input.formKeys.includes("nom035_guia3")) {
@@ -344,7 +345,11 @@ export async function findCompanyEmployeesFormsSummary(
       WHERE a.company_id = $1 AND a.evaluation_year = $2 AND k <> 'nom035_guia5'`,
     [companyId, evaluationYear],
   );
-  const applicable = ["nom035_guia5", ...assigned.map((r) => r.form_key)];
+  // Guía IV es documento de empresa: no aparece en íconos/estados por empleado.
+  const applicable = [
+    "nom035_guia5",
+    ...assigned.map((r) => r.form_key).filter((k) => k !== "nom035_guia4"),
+  ];
   const order = ["nom035_guia1", "nom035_guia2", "nom035_guia3", "nom035_guia5"];
   const guia3Sampling = assigned.some((r) => r.form_key === "nom035_guia3")
     ? await findGuideSampling(companyId, "nom035_guia3", evaluationYear)
@@ -764,12 +769,14 @@ export async function findCompanyGuideProgress(
               : [],
           }
         : null;
-    const total =
-      sampling?.mode === "sample"
+    const isDocument = r.form_key === "nom035_guia4";
+    const total = isDocument
+      ? 0
+      : sampling?.mode === "sample"
         ? sampling.sampleN || sampling.selectedStudentIds.length
         : Number(r.employees_total);
-    const completed = Number(r.completed);
-    const partial = Number(r.partial);
+    const completed = isDocument ? 0 : Number(r.completed);
+    const partial = isDocument ? 0 : Number(r.partial);
     return {
       formKey: r.form_key,
       mode: r.mode,

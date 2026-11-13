@@ -69,7 +69,10 @@ function summarize(key: FormKey) {
 
 export class FormService {
   listDefinitions() {
-    return { forms: FORM_KEYS.map(summarize) };
+    // Guía IV no aparece en el catálogo: solo en el dashboard NOM-035.
+    return {
+      forms: FORM_KEYS.filter((k) => k !== "nom035_guia4").map(summarize),
+    };
   }
 
   getDefinition(key: string) {
@@ -361,6 +364,9 @@ export class FormService {
     } = {},
   ) {
     if (!isFormKey(formKey)) throw new AppError(404, "Formulario no encontrado", "FORM_NOT_FOUND");
+    if (formKey === "nom035_guia4") {
+      throw new AppError(400, "La Guía IV es un documento PDF; no se captura por empleado", "DOCUMENT_FORM");
+    }
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
     const student = await findStudentById(studentId);
@@ -583,7 +589,7 @@ export class FormService {
   }
 
   async setMode(companyId: string, formKey: string, mode: FormMode, evaluationYear?: number) {
-    if (!isFormKey(formKey) || formKey === "nom035_guia5") {
+    if (!isFormKey(formKey) || formKey === "nom035_guia5" || formKey === "nom035_guia4") {
       throw new AppError(404, "Formulario no encontrado", "FORM_NOT_FOUND");
     }
     const company = await findCompanyById(companyId);
@@ -625,7 +631,7 @@ export class FormService {
 
   /** Definición + respuestas guardadas. Solo guías self no completadas de su empresa. Sin resultados. */
   async studentForm(studentId: string, formKey: string) {
-    if (!isFormKey(formKey) || formKey === "nom035_guia5") {
+    if (!isFormKey(formKey) || formKey === "nom035_guia5" || formKey === "nom035_guia4") {
       throw new AppError(404, "Formulario no disponible", "FORM_NOT_AVAILABLE");
     }
     const companyId = await this.studentCompany(studentId);
