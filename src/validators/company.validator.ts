@@ -10,6 +10,17 @@ const companyRfcSchema = z
   );
 
 const companyProfileFields = {
+  addressStreet: z.string().trim().max(150, "Calle: máximo 150 caracteres").optional().nullable(),
+  addressExteriorNumber: z.string().trim().max(30, "Número exterior: máximo 30 caracteres").optional().nullable(),
+  addressInteriorNumber: z.string().trim().max(30, "Número interior: máximo 30 caracteres").optional().nullable(),
+  addressNeighborhood: z.string().trim().max(150, "Colonia: máximo 150 caracteres").optional().nullable(),
+  addressPostalCode: z.string().trim().regex(/^(?:[0-9]{5})?$/, "El código postal debe tener 5 dígitos").optional().nullable(),
+  addressCity: z.string().trim().max(100, "Ciudad o localidad: máximo 100 caracteres").optional().nullable(),
+  addressMunicipality: z.string().trim().max(100, "Municipio o alcaldía: máximo 100 caracteres").optional().nullable(),
+  addressState: z.string().trim().max(100, "Estado: máximo 100 caracteres").optional().nullable(),
+  addressCountry: z.string().trim().max(100, "País: máximo 100 caracteres").optional().nullable(),
+  addressBetweenStreet1: z.string().trim().max(150, "Entre calle: máximo 150 caracteres").optional().nullable(),
+  addressBetweenStreet2: z.string().trim().max(150, "Y calle: máximo 150 caracteres").optional().nullable(),
   name: z.string().trim().min(2, "El nombre o razón social es obligatorio"),
   rfc: z
     .string()
@@ -29,6 +40,8 @@ const companyProfileFields = {
     .max(1000000)
     .optional()
     .nullable(),
+  address: z.string().trim().max(500, "El domicilio no debe superar 500 caracteres").optional().nullable(),
+  activityMain: z.string().trim().max(100, "La actividad principal no debe superar 100 caracteres").optional().nullable(),
 };
 
 const accessEmailSchema = z.string().trim().toLowerCase().email("no es un correo válido");
@@ -71,6 +84,19 @@ export const updateCompanySchema = z.object({
   employerRepresentative: companyProfileFields.employerRepresentative,
   workersRepresentative: companyProfileFields.workersRepresentative,
   workersCount: companyProfileFields.workersCount,
+  activityMain: companyProfileFields.activityMain,
+  address: companyProfileFields.address,
+  addressStreet: companyProfileFields.addressStreet,
+  addressExteriorNumber: companyProfileFields.addressExteriorNumber,
+  addressInteriorNumber: companyProfileFields.addressInteriorNumber,
+  addressNeighborhood: companyProfileFields.addressNeighborhood,
+  addressPostalCode: companyProfileFields.addressPostalCode,
+  addressCity: companyProfileFields.addressCity,
+  addressMunicipality: companyProfileFields.addressMunicipality,
+  addressState: companyProfileFields.addressState,
+  addressCountry: companyProfileFields.addressCountry,
+  addressBetweenStreet1: companyProfileFields.addressBetweenStreet1,
+  addressBetweenStreet2: companyProfileFields.addressBetweenStreet2,
 });
 
 export const listCompaniesQuerySchema = z.object({

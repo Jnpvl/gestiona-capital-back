@@ -1,4 +1,15 @@
 export interface CompanyRecord {
+  address_street: string | null;
+  address_exterior_number: string | null;
+  address_interior_number: string | null;
+  address_neighborhood: string | null;
+  address_postal_code: string | null;
+  address_city: string | null;
+  address_municipality: string | null;
+  address_state: string | null;
+  address_country: string | null;
+  address_between_street_1: string | null;
+  address_between_street_2: string | null;
   id: string;
   name: string;
   name_normalized: string;
@@ -12,9 +23,12 @@ export interface CompanyRecord {
   last_login_at: Date | null;
   created_at: Date;
   updated_at: Date;
+  activity_main: string | null;
+  address: string | null;
 }
 
 export interface CompanyListItem {
+  activityMain: string | null;
   id: string;
   name: string;
   rfc: string | null;
@@ -24,12 +38,26 @@ export interface CompanyListItem {
 }
 
 export interface CompanyDetail {
+  addressStreet: string | null;
+  addressExteriorNumber: string | null;
+  addressInteriorNumber: string | null;
+  addressNeighborhood: string | null;
+  addressPostalCode: string | null;
+  addressCity: string | null;
+  addressMunicipality: string | null;
+  addressState: string | null;
+  addressCountry: string | null;
+  addressBetweenStreet1: string | null;
+  addressBetweenStreet2: string | null;
   id: string;
   name: string;
   rfc: string | null;
   employerRepresentative: string | null;
   workersRepresentative: string | null;
   workersCount: number | null;
+  address: string | null;
+  /** Actividad principal del negocio. */
+  activityMain: string | null;
   /** Correo de acceso al portal de empresa (null si no tiene acceso). */
   accessEmail: string | null;
   hasAccess: boolean;
@@ -54,6 +82,19 @@ export interface CreateCompanyInput {
   employerRepresentative?: string | null;
   workersRepresentative?: string | null;
   workersCount?: number | null;
+  activityMain?: string | null;
+  address?: string | null;
+  addressStreet?: string | null;
+  addressExteriorNumber?: string | null;
+  addressInteriorNumber?: string | null;
+  addressNeighborhood?: string | null;
+  addressPostalCode?: string | null;
+  addressCity?: string | null;
+  addressMunicipality?: string | null;
+  addressState?: string | null;
+  addressCountry?: string | null;
+  addressBetweenStreet1?: string | null;
+  addressBetweenStreet2?: string | null;
 }
 
 export interface UpdateCompanyInput {
@@ -62,6 +103,19 @@ export interface UpdateCompanyInput {
   employerRepresentative?: string | null;
   workersRepresentative?: string | null;
   workersCount?: number | null;
+  activityMain?: string | null;
+  address?: string | null;
+  addressStreet?: string | null;
+  addressExteriorNumber?: string | null;
+  addressInteriorNumber?: string | null;
+  addressNeighborhood?: string | null;
+  addressPostalCode?: string | null;
+  addressCity?: string | null;
+  addressMunicipality?: string | null;
+  addressState?: string | null;
+  addressCountry?: string | null;
+  addressBetweenStreet1?: string | null;
+  addressBetweenStreet2?: string | null;
 }
 
 export interface ListCompaniesFilters {
