@@ -28,6 +28,7 @@ import {
   type FormMode,
   type GuideSamplingMeta,
 } from "../repositories/form.repository";
+import { listCompanyReferralStatuses } from "../repositories/referral.repository";
 import {
   ASSIGNABLE_FORM_KEYS,
   FORM_DEFINITIONS,
@@ -125,7 +126,7 @@ export class FormService {
     const company = await findCompanyById(companyId);
     if (!company) throw new AppError(404, "Empresa no encontrada", "COMPANY_NOT_FOUND");
     const year = evaluationYear ?? currentEvaluationYear();
-    const [employees, assigned, statuses, completed, demographics, evaluationYears, guia3Sampling] =
+    const [employees, assigned, statuses, completed, demographics, evaluationYears, guia3Sampling, referralStatuses] =
       await Promise.all([
         findCompanyEmployeesBasic(companyId),
         findCompanyAssignedFormKeys(companyId, year),
@@ -134,6 +135,7 @@ export class FormService {
         findCompanyDemographics(companyId, year),
         findCompanyEvaluationYears(companyId),
         findGuideSampling(companyId, "nom035_guia3", year),
+        listCompanyReferralStatuses(companyId, year),
       ]);
     const sampleSelected =
       guia3Sampling?.mode === "sample"
@@ -303,7 +305,12 @@ export class FormService {
           };
         }
         forms.nom035_guia5 = { status: statusOf("nom035_guia5"), result: null };
-        return { studentId: e.id, employeeName: e.name, forms };
+        return {
+          studentId: e.id,
+          employeeName: e.name,
+          forms,
+          referralStatus: referralStatuses.get(e.id) ?? null,
+        };
       }),
     };
   }

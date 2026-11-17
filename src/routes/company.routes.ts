@@ -92,3 +92,22 @@ companyRoutes.post("/:id/forms/assignments", ...staffAuth, (req, res, next) =>
 
 companyRoutes.get("/:id/forms/:formKey/template", authenticate, requireStaff("admin"), (req, res, next) => formController.downloadTemplate(req, res, next));
 companyRoutes.post("/:id/forms/:formKey/import", authenticate, requireStaff("admin"), uploadMiddleware, (req, res, next) => formController.importExcel(req, res, next));
+
+companyRoutes.get("/:id/psychologists", ...staffAuth, (req, res, next) =>
+  companyController.listPsychologists(req, res, next),
+);
+companyRoutes.post("/:id/psychologists", ...staffAuth, (req, res, next) =>
+  companyController.createPsychologist(req, res, next),
+);
+companyRoutes.put("/:id/psychologists/:psychologistId", ...staffAuth, (req, res, next) =>
+  companyController.updatePsychologist(req, res, next),
+);
+companyRoutes.delete("/:id/psychologists/:psychologistId", ...staffAuth, (req, res, next) =>
+  companyController.deletePsychologist(req, res, next),
+);
+companyRoutes.get("/:id/employees/:studentId/referral", ...staffAuth, (req, res, next) =>
+  companyController.getEmployeeReferral(req, res, next),
+);
+companyRoutes.put("/:id/employees/:studentId/referral", ...staffAuth, (req, res, next) =>
+  companyController.saveEmployeeReferral(req, res, next),
+);
