@@ -5,10 +5,16 @@ import { AppError } from "../errors/app-error";
 import { findStudentById, findStudentEnrollments, findStudentsPaginated } from "../repositories/student.repository";
 import { companyService } from "../services/company.service";
 import { formService } from "../services/form.service";
+import { referralService } from "../services/referral.service";
 import { parseEvaluationYearQuery } from "../validators/form.validator";
+import {
+  psychologistInputSchema,
+  referralYearQuerySchema,
+  saveReferralSchema,
+} from "../validators/referral.validator";
 
 /**
- * Portal de empresa: SOLO LECTURA. El companyId siempre sale del token de empresa
+ * Portal de empresa. El companyId siempre sale del token de empresa
  * (req.auth.sub), nunca de la URL ni del body.
  */
 function companyIdOf(req: Request): string {
@@ -167,6 +173,80 @@ export class CompanyPortalController {
   async courseDetail(req: Request, res: Response, next: NextFunction) {
     try {
       res.json(await companyService.getCourseDetail(companyIdOf(req), param(req, "courseId")));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async listPsychologists(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(await referralService.listPsychologists(companyIdOf(req)));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createPsychologist(req: Request, res: Response, next: NextFunction) {
+    try {
+      const input = psychologistInputSchema.parse(req.body);
+      res.status(201).json(await referralService.createPsychologist(companyIdOf(req), input));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updatePsychologist(req: Request, res: Response, next: NextFunction) {
+    try {
+      const input = psychologistInputSchema.parse(req.body);
+      res.json(
+        await referralService.updatePsychologist(
+          companyIdOf(req),
+          param(req, "psychologistId"),
+          input,
+        ),
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deletePsychologist(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(
+        await referralService.deletePsychologist(companyIdOf(req), param(req, "psychologistId")),
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getEmployeeReferral(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { year } = referralYearQuerySchema.parse(req.query);
+      res.json(
+        await referralService.getEmployeeReferral(
+          companyIdOf(req),
+          param(req, "studentId"),
+          year,
+        ),
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async saveEmployeeReferral(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { year } = referralYearQuerySchema.parse(req.query);
+      const input = saveReferralSchema.parse(req.body);
+      res.json(
+        await referralService.saveEmployeeReferral(
+          companyIdOf(req),
+          param(req, "studentId"),
+          year,
+          input,
+        ),
+      );
     } catch (error) {
       next(error);
     }
