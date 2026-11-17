@@ -21,6 +21,7 @@ function mapListItem(
     id: row.id,
     name: row.name,
     rfc: row.rfc,
+    activityMain: row.activity_main,
     employerRepresentative: row.employer_representative,
     studentsCount: Number(row.students_count),
     createdAt: row.created_at.toISOString(),
@@ -35,6 +36,19 @@ function mapDetail(row: CompanyRecord & { students_count: string }): CompanyDeta
     employerRepresentative: row.employer_representative,
     workersRepresentative: row.workers_representative,
     workersCount: row.workers_count,
+    address: row.address ?? null,
+    addressStreet: row.address_street ?? null,
+    addressExteriorNumber: row.address_exterior_number ?? null,
+    addressInteriorNumber: row.address_interior_number ?? null,
+    addressNeighborhood: row.address_neighborhood ?? null,
+    addressPostalCode: row.address_postal_code ?? null,
+    addressCity: row.address_city ?? null,
+    addressMunicipality: row.address_municipality ?? null,
+    addressState: row.address_state ?? null,
+    addressCountry: row.address_country ?? null,
+    addressBetweenStreet1: row.address_between_street_1 ?? null,
+    addressBetweenStreet2: row.address_between_street_2 ?? null,
+    activityMain: row.activity_main,
     accessEmail: row.access_email,
     hasAccess: !!row.access_email && !!row.password_hash,
     lastLoginAt: row.last_login_at ? row.last_login_at.toISOString() : null,
@@ -137,9 +151,10 @@ export async function createCompany(input: CreateCompanyInput): Promise<CompanyD
   const { rows } = await pool.query<CompanyRecord>(
     `INSERT INTO companies (
        name, name_normalized, rfc,
-       employer_representative, workers_representative, workers_count
+       employer_representative, workers_representative, workers_count, activity_main, address,
+       address_street, address_exterior_number, address_interior_number, address_neighborhood, address_postal_code, address_city, address_municipality, address_state, address_country, address_between_street_1, address_between_street_2
      )
-     VALUES ($1, $2, $3, $4, $5, $6)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
      RETURNING *`,
     [
       trimmedName,
@@ -148,6 +163,19 @@ export async function createCompany(input: CreateCompanyInput): Promise<CompanyD
       input.employerRepresentative?.trim() || null,
       input.workersRepresentative?.trim() || null,
       input.workersCount ?? null,
+      input.activityMain?.trim() || null,
+      input.address?.trim() || null,
+      input.addressStreet?.trim() || null,
+      input.addressExteriorNumber?.trim() || null,
+      input.addressInteriorNumber?.trim() || null,
+      input.addressNeighborhood?.trim() || null,
+      input.addressPostalCode?.trim() || null,
+      input.addressCity?.trim() || null,
+      input.addressMunicipality?.trim() || null,
+      input.addressState?.trim() || null,
+      input.addressCountry?.trim() || null,
+      input.addressBetweenStreet1?.trim() || null,
+      input.addressBetweenStreet2?.trim() || null,
     ],
   );
 
@@ -177,6 +205,19 @@ export async function updateCompany(
          employer_representative = $4,
          workers_representative = $5,
          workers_count = $7,
+         activity_main = $8,
+         address = $9,
+         address_street = $10,
+         address_exterior_number = $11,
+         address_interior_number = $12,
+         address_neighborhood = $13,
+         address_postal_code = $14,
+         address_city = $15,
+         address_municipality = $16,
+         address_state = $17,
+         address_country = $18,
+         address_between_street_1 = $19,
+         address_between_street_2 = $20,
          updated_at = NOW()
      WHERE id = $6
      RETURNING id`,
@@ -192,6 +233,19 @@ export async function updateCompany(
         : current.workersRepresentative,
       id,
       input.workersCount !== undefined ? input.workersCount ?? null : current.workersCount,
+      input.activityMain !== undefined ? input.activityMain?.trim() || null : current.activityMain,
+      input.address !== undefined ? input.address?.trim() || null : current.address,
+      input.addressStreet !== undefined ? input.addressStreet?.trim() || null : current.addressStreet,
+      input.addressExteriorNumber !== undefined ? input.addressExteriorNumber?.trim() || null : current.addressExteriorNumber,
+      input.addressInteriorNumber !== undefined ? input.addressInteriorNumber?.trim() || null : current.addressInteriorNumber,
+      input.addressNeighborhood !== undefined ? input.addressNeighborhood?.trim() || null : current.addressNeighborhood,
+      input.addressPostalCode !== undefined ? input.addressPostalCode?.trim() || null : current.addressPostalCode,
+      input.addressCity !== undefined ? input.addressCity?.trim() || null : current.addressCity,
+      input.addressMunicipality !== undefined ? input.addressMunicipality?.trim() || null : current.addressMunicipality,
+      input.addressState !== undefined ? input.addressState?.trim() || null : current.addressState,
+      input.addressCountry !== undefined ? input.addressCountry?.trim() || null : current.addressCountry,
+      input.addressBetweenStreet1 !== undefined ? input.addressBetweenStreet1?.trim() || null : current.addressBetweenStreet1,
+      input.addressBetweenStreet2 !== undefined ? input.addressBetweenStreet2?.trim() || null : current.addressBetweenStreet2,
     ],
   );
 
