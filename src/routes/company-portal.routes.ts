@@ -1,10 +1,13 @@
 import { Router } from "express";
+import { individualReport } from "../controllers/individual-report.controller";
 import { companyPortalController as c } from "../controllers/company-portal.controller";
 import { authenticate, requireCompany } from "../middleware/auth.middleware";
 
 /** Portal de empresa: token de empresa; companyId sale del token. */
 export const companyPortalRoutes = Router();
 companyPortalRoutes.use(authenticate, requireCompany());
+
+companyPortalRoutes.get("/employees/:studentId/report", individualReport);
 
 companyPortalRoutes.get("/profile", (req, res, next) => c.profile(req, res, next));
 companyPortalRoutes.get("/employees", (req, res, next) => c.employees(req, res, next));
