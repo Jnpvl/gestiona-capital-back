@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { individualReport } from "../controllers/individual-report.controller";
 import { sendEmployeeAccess } from "../controllers/company.controller";
 import { companyController } from "../controllers/company.controller";
 import { formController } from "../controllers/form.controller";
@@ -8,6 +9,8 @@ import { authenticate, requireStaff } from "../middleware/auth.middleware";
 const staffAuth = [authenticate, requireStaff()];
 
 export const companyRoutes = Router();
+
+companyRoutes.get("/:id/employees/:studentId/report", authenticate, requireStaff("admin"), individualReport);
 
 companyRoutes.get("/autocomplete", ...staffAuth, (req, res, next) =>
   companyController.autocomplete(req, res, next),
