@@ -25,6 +25,8 @@ export interface IndividualReportData {
   riskGuide: "nom035_guia2" | "nom035_guia3" | null;
   guides: ReportGuide[];
   referralStatus: string | null;
+  /** Logo del staff que asignó los formularios NOM-035 (`staff.logo_url`), si existe. */
+  advisorLogoUrl: string | null;
 }
 
 /** Reads only the requested employee/year. Never recalculates or changes stored results. */
@@ -34,7 +36,7 @@ export async function loadIndividualReport(companyId: string, studentId: string,
   if (!company || !employee || employee.companyId !== companyId) {
     throw new AppError(404, "Empleado no encontrado en esta empresa", "EMPLOYEE_NOT_FOUND");
   }
-  const [assigned, sampling, referral, dates, assignmentStart] = await Promise.all([
+  const [assigned, sampling, referral, dates, assignmentStart, advisorLogo] = await Promise.all([
     findCompanyAssignedFormKeys(companyId, year), findGuideSampling(companyId, "nom035_guia3", year),
     findEmployeeReferral(companyId, studentId, year),
     pool.query<{ form_key: string; completed_at: Date | null }>(
@@ -46,6 +48,17 @@ export async function loadIndividualReport(companyId: string, studentId: string,
       `SELECT MIN(a.created_at) AS started_at
          FROM form_assignments a
         WHERE a.company_id = $1 AND a.evaluation_year = $2`,
+      [companyId, year]),
+    pool.query<{ logo_url: string | null }>(
+      `SELECT s.logo_url
+         FROM form_assignments a
+         JOIN staff s ON s.id = a.created_by_staff_id
+        WHERE a.company_id = $1
+          AND a.evaluation_year = $2
+          AND a.created_by_staff_id IS NOT NULL
+          AND NULLIF(BTRIM(s.logo_url), '') IS NOT NULL
+        ORDER BY a.created_at DESC
+        LIMIT 1`,
       [companyId, year]),
   ]);
   const keys: ReportGuideKey[] = ["nom035_guia1", "nom035_guia2", "nom035_guia3", "nom035_guia5"];
@@ -78,6 +91,7 @@ export async function loadIndividualReport(companyId: string, studentId: string,
     riskGuide,
     guides: included,
     referralStatus: referral?.status ?? null,
+    advisorLogoUrl: advisorLogo.rows[0]?.logo_url?.trim() || null,
   };
 }
 
