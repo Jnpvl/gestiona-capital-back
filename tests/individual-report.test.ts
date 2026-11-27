@@ -23,8 +23,12 @@ export function reportFixture(key: "nom035_guia2" | "nom035_guia3" = "nom035_gui
       employerRepresentative: "Representante de prueba", workersRepresentative: null, workersCount: 120,
       accessEmail: null, hasAccess: false, lastLoginAt: null, studentsCount: 120, createdAt: "2025-01-01", updatedAt: "2025-01-01" },
     employee: { id: "22222222-2222-4222-8222-222222222222", name: "MARÍA FERNANDA PÉREZ DE PRUEBA", curp: null },
-    year: 2025, generatedAt: "2026-11-24T18:00:00.000Z", riskGuide: key,
-    guides: [fixtureGuide("nom035_guia1"), fixtureGuide(key), fixtureGuide("nom035_guia5")], referralStatus: "En atención",
+    year: 2025,
+    evaluationStartedAt: "2025-03-01T12:00:00.000Z",
+    generatedAt: "2026-11-24T18:00:00.000Z",
+    riskGuide: key,
+    guides: [fixtureGuide("nom035_guia1"), fixtureGuide(key), fixtureGuide("nom035_guia5")],
+    referralStatus: "En atención",
   };
 }
 

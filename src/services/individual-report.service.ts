@@ -19,6 +19,8 @@ export interface IndividualReportData {
   company: NonNullable<Awaited<ReturnType<typeof findCompanyById>>>;
   employee: { id: string; name: string; curp: string | null };
   year: number;
+  /** Fecha en que se asignaron los formularios del año (`form_assignments.created_at` más antigua). */
+  evaluationStartedAt: string | null;
   generatedAt: string;
   riskGuide: "nom035_guia2" | "nom035_guia3" | null;
   guides: ReportGuide[];
@@ -32,7 +34,7 @@ export async function loadIndividualReport(companyId: string, studentId: string,
   if (!company || !employee || employee.companyId !== companyId) {
     throw new AppError(404, "Empleado no encontrado en esta empresa", "EMPLOYEE_NOT_FOUND");
   }
-  const [assigned, sampling, referral, dates] = await Promise.all([
+  const [assigned, sampling, referral, dates, assignmentStart] = await Promise.all([
     findCompanyAssignedFormKeys(companyId, year), findGuideSampling(companyId, "nom035_guia3", year),
     findEmployeeReferral(companyId, studentId, year),
     pool.query<{ form_key: string; completed_at: Date | null }>(
@@ -40,6 +42,11 @@ export async function loadIndividualReport(companyId: string, studentId: string,
        JOIN form_assignments a ON a.id = r.assignment_id
        WHERE a.company_id = $1 AND r.student_id = $2 AND a.evaluation_year = $3
        ORDER BY r.form_key, a.created_at DESC, r.updated_at DESC`, [companyId, studentId, year]),
+    pool.query<{ started_at: Date | null }>(
+      `SELECT MIN(a.created_at) AS started_at
+         FROM form_assignments a
+        WHERE a.company_id = $1 AND a.evaluation_year = $2`,
+      [companyId, year]),
   ]);
   const keys: ReportGuideKey[] = ["nom035_guia1", "nom035_guia2", "nom035_guia3", "nom035_guia5"];
   const guides = await Promise.all(keys.map(async (key): Promise<ReportGuide> => {
@@ -62,8 +69,16 @@ export async function loadIndividualReport(companyId: string, studentId: string,
   if (!included.some(g => g.status === "completed" || g.status === "partial")) {
     throw new AppError(409, "No hay respuestas disponibles para generar el reporte de este año", "REPORT_NO_DATA");
   }
-  return { company, employee: { id: employee.id, name: employee.name, curp: employee.curp }, year,
-    generatedAt: new Date().toISOString(), riskGuide, guides: included, referralStatus: referral?.status ?? null };
+  return {
+    company,
+    employee: { id: employee.id, name: employee.name, curp: employee.curp },
+    year,
+    evaluationStartedAt: assignmentStart.rows[0]?.started_at?.toISOString() ?? null,
+    generatedAt: new Date().toISOString(),
+    riskGuide,
+    guides: included,
+    referralStatus: referral?.status ?? null,
+  };
 }
 
 export async function generateIndividualReport(companyId: string, studentId: string, year: number,

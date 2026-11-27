@@ -16,6 +16,9 @@ const REPORT_RISK_LABEL: Record<RiskLevel, string> = { ...RISK_LEVEL_LABEL, nulo
 const STATUS: Record<string, string> = { completed: "Completa", partial: "Parcial", pending: "Sin responder",
   not_assigned: "No asignada", not_selected: "No seleccionado en la muestra" };
 const date = (iso: string | null) => iso ? new Date(iso).toLocaleDateString("es-MX", { timeZone: "America/Hermosillo" }) : "No registrada";
+const longDate = (iso: string | null) => iso
+  ? new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric", timeZone: "America/Hermosillo" })
+  : null;
 type Cell = { text: string; level?: RiskLevel; bold?: boolean; center?: boolean; background?: ReturnType<typeof rgb>; color?: ReturnType<typeof rgb>; indent?: number; section?: boolean };
 
 /** Letter-size layout, repeated table headers, complete rows and dynamic page numbers. */
@@ -24,9 +27,11 @@ class Layout {
   y = 0;
   readonly width = 498.6141732283464;
   readonly left = 56.69291338582678;
+  /** Reserva inferior para pie (logo, marca, folio y páginas). */
+  readonly bottom = 110;
   constructor(readonly doc: PDFDocument, readonly regular: PDFFont, readonly bold: PDFFont, readonly italic: PDFFont) { this.newPage(); }
   newPage() { this.page = this.doc.addPage([612, 792]); this.y = 752; }
-  ensure(height: number) { if (this.y - height < 40) this.newPage(); }
+  ensure(height: number) { if (this.y - height < this.bottom) this.newPage(); }
   clean(value: string) { return value.normalize("NFC").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ""); }
   wrap(text: string, width: number, size: number, font = this.regular): string[] {
     const result: string[] = [];
@@ -44,9 +49,15 @@ class Layout {
     }
     return result;
   }
-  text(text: string, options: { size?: number; bold?: boolean; italic?: boolean; justify?: boolean; color?: ReturnType<typeof rgb>; after?: number } = {}) {
+  text(text: string, options: { size?: number; bold?: boolean; italic?: boolean; justify?: boolean; color?: ReturnType<typeof rgb>; after?: number; keepTogether?: boolean } = {}) {
     const size = options.size ?? 11, font = options.bold ? this.bold : options.italic ? this.italic : this.regular;
     const lines = this.wrap(text, this.width, size, font);
+    const after = options.after ?? 7;
+    // Evita dejar un párrafo partido con 1–2 líneas solas en la hoja siguiente.
+    if (options.keepTogether) {
+      const blockHeight = lines.length * size * 1.2 + after;
+      this.ensure(Math.min(blockHeight, 680));
+    }
     for (const [index, line] of lines.entries()) {
       this.ensure(size * 1.2);
       const words = line.split(" ");
@@ -57,7 +68,7 @@ class Layout {
       } else this.page.drawText(line, { x: this.left, y: this.y - size, size, font, color: options.color ?? INK });
       this.y -= size * 1.2;
     }
-    this.y -= options.after ?? 7;
+    this.y -= after;
   }
   heading(text: string) { this.ensure(82); this.text(text.toLocaleUpperCase("es"), { size: 12, bold: true, color: BLUE, after: 17 }); }
   table(headers: string[], widths: number[], rows: Cell[][], options: { size?: number; zebra?: boolean; padding?: number; headerSize?: number; headerPadding?: number; after?: number; borderless?: boolean; inset?: number } = {}) {
@@ -81,15 +92,15 @@ class Layout {
       const lines = row.map((cell, i) => this.wrap(cell.text, rowWidths[i] - inset * 2 - (cell.indent ?? 0), size, cell.level || cell.bold ? this.bold : this.regular));
       if (row[0]?.section && rows[index + 1]) {
         const nextHeight = Math.max(...rows[index + 1].map((cell, i) => this.wrap(cell.text, widths[i] - inset * 2, size, cell.bold ? this.bold : this.regular).length)) * lineHeight + padding;
-        if (this.y - (Math.max(...lines.map(line => line.length)) * lineHeight + padding + nextHeight) < 40) { this.newPage(); header(); }
+        if (this.y - (Math.max(...lines.map(line => line.length)) * lineHeight + padding + nextHeight) < this.bottom) { this.newPage(); header(); }
       }
       let offset = 0;
       const totalLines = Math.max(1, ...lines.map(l => l.length));
       while (offset < totalLines) {
         const rowHeight = (totalLines - offset) * lineHeight + padding;
-        if (rowHeight > this.y - 40 && rowHeight <= 712 - headerHeight) { this.newPage(); header(); }
-        if (this.y - 40 < lineHeight + padding) { this.newPage(); header(); }
-        const take = Math.min(totalLines - offset, Math.floor((this.y - 40 - padding) / lineHeight));
+        if (rowHeight > this.y - this.bottom && rowHeight <= 712 - headerHeight) { this.newPage(); header(); }
+        if (this.y - this.bottom < lineHeight + padding) { this.newPage(); header(); }
+        const take = Math.min(totalLines - offset, Math.floor((this.y - this.bottom - padding) / lineHeight));
         const height = take * lineHeight + padding;
         let x = this.left;
         row.forEach((cell, i) => {
@@ -123,6 +134,7 @@ export function reportItemPoints(form: FormDefinition, question: FormQuestion, g
   return form.scoring.positiveItems.includes(question.number) ? index : 4 - index;
 }
 
+/** Orden oficial NOM-035 (Tabla de categorías/dominios/dimensiones), no por puntaje. */
 export function buildReportHierarchy(guide: ReportGuide): { kind: "category" | "domain" | "dimension"; name: string; value: number; level?: RiskLevel }[] {
   const form = FORM_DEFINITIONS[guide.key];
   if (!guide.score || !form.scoring) return [];
@@ -131,15 +143,20 @@ export function buildReportHierarchy(guide: ReportGuide): { kind: "category" | "
   const points = new Map(form.sections.filter(section => isSectionVisible(section, guide.answers, form)).flatMap(section =>
     section.questions.map(question => [question.number, reportItemPoints(form, question, guide) ?? 0] as const)));
   const rows: ReturnType<typeof buildReportHierarchy> = [];
-  for (const category of [...form.scoring.categories].sort((a, b) => (categories.get(b.key)?.value ?? 0) - (categories.get(a.key)?.value ?? 0))) {
+  for (const category of form.scoring.categories) {
     const result = categories.get(category.key);
     rows.push({ kind: "category", name: category.name, value: result?.value ?? 0, level: result?.level });
-    for (const domain of [...category.domains].sort((a, b) => (domains.get(b.key)?.value ?? 0) - (domains.get(a.key)?.value ?? 0))) {
+    for (const domain of category.domains) {
       const score = domains.get(domain.key);
       rows.push({ kind: "domain", name: domain.name, value: score?.value ?? 0, level: score?.level });
-      const dimensions = domain.dimensions.map(dimension => ({ kind: "dimension" as const, name: dimension.name,
-        value: dimension.items.reduce((total, item) => total + (points.get(item) ?? 0), 0), level: score?.level }));
-      rows.push(...dimensions.sort((a, b) => b.value - a.value));
+      for (const dimension of domain.dimensions) {
+        rows.push({
+          kind: "dimension",
+          name: dimension.name,
+          value: dimension.items.reduce((total, item) => total + (points.get(item) ?? 0), 0),
+          level: score?.level,
+        });
+      }
     }
   }
   return rows;
@@ -162,14 +179,16 @@ export async function renderIndividualReport(data: IndividualReportData): Promis
   const final = risk?.score?.final;
   const violence = risk?.score?.domains?.find(d => d.key === "violencia");
   const affectedViolence = violence && ["alto", "muy_alto"].includes(violence.level);
-  const followup = clinical?.score?.requiresClinicalAssessment === true || !!affectedViolence || !!(final && ["alto", "muy_alto"].includes(final.level));
   const binary = (value: boolean | undefined) => value == null ? "SIN RESULTADO DISPONIBLE" : value ? "SÍ DETECTADO" : "NO DETECTADO";
   const guideTitle = risk ? FORM_DEFINITIONS[risk.key].title : "Sin guía de riesgo disponible";
 
   pdf.text("REPORTE INDIVIDUAL NOM-035-STPS-2018", { size: 20, bold: true, color: BLUE, after: 5 });
   pdf.text("FACTORES DE RIESGO PSICOSOCIAL EN EL TRABAJO", { size: 12, after: 3 });
   pdf.text("IDENTIFICACIÓN, ANÁLISIS Y PREVENCIÓN", { size: 12, italic: true, after: 4 });
-  pdf.text(`Fecha de evaluación: ${date(risk?.completedAt ?? clinical?.completedAt ?? null)} · Periodo ${data.year}`, { size: 10, color: MUTED, after: 13 });
+  pdf.text(
+    `Fecha de inicio de evaluación: ${date(data.evaluationStartedAt)} · Periodo ${data.year}`,
+    { size: 11, color: MUTED, after: 13 },
+  );
   pdf.text(data.employee.name.toLocaleUpperCase("es"), { size: 14, bold: true, color: BLUE, after: 15 });
   const entityLines = pdf.wrap(`EMPRESA: ${data.company.name}`, 310, 11);
   const application = `Fecha de Aplicación: ${date(risk?.completedAt ?? clinical?.completedAt ?? null)}`;
@@ -183,10 +202,24 @@ export async function renderIndividualReport(data: IndividualReportData): Promis
   pdf.page.drawText(scoreLabel, { x: pdf.left + pdf.width - regular.widthOfTextAtSize(scoreLabel, 11), y: pdf.y - 11, size: 11, font: regular, color: INK });
   pdf.y -= 20;
   pdf.text(`Presencia de Evento Traumático (Guía I): ${binary(clinical?.score?.traumaticEventReported)}`, { size: 11, after: 7 });
-  pdf.text(`Presencia de Violencia Laboral: ${binary(violence ? !!affectedViolence : undefined)}`, { size: 11, after: 21 });
+  {
+    const violenceValue = binary(violence ? !!affectedViolence : undefined);
+    const violenceLabel = "Presencia de Violencia Laboral: ";
+    const violenceDetected = !!affectedViolence;
+    pdf.ensure(11 * 1.2);
+    pdf.page.drawText(violenceLabel, { x: pdf.left, y: pdf.y - 11, size: 11, font: regular, color: INK });
+    pdf.page.drawText(violenceValue, {
+      x: pdf.left + regular.widthOfTextAtSize(violenceLabel, 11),
+      y: pdf.y - 11,
+      size: 11,
+      font: violenceDetected ? bold : regular,
+      color: violenceDetected ? RISK.muy_alto : INK,
+    });
+    pdf.y -= 11 * 1.2 + 21;
+  }
   pdf.heading("Perfil demográfico");
   if (demographic && ["completed", "partial"].includes(demographic.status)) {
-    if (demographic.status === "partial") pdf.text("Ficha parcial: los campos pendientes se muestran sin respuesta.", { size: 9, color: MUTED });
+    if (demographic.status === "partial") pdf.text("Ficha parcial: los campos pendientes se muestran sin respuesta.", { size: 11, color: MUTED });
     const form = FORM_DEFINITIONS.nom035_guia5;
     const fields = [["puesto", "Puesto"], ["edad", "Edad"], ["sexo", "Género"], ["tipo_contratacion", "Tipo de Contrato"],
       ["tipo_jornada", "Jornada"], ["rotacion_turnos", "¿Rota turnos?"], ["tiempo_experiencia", "Rango de Experiencia"],
@@ -195,13 +228,57 @@ export async function renderIndividualReport(data: IndividualReportData): Promis
     const questions = form.sections.flatMap(section => section.questions);
     pdf.table(["Categoría demográfica", "Valor registrado"], [226, 274], fields.map(([id, label]) => [
       { text: label }, { text: reportAnswer(form, questions.find(question => question.id === id)!, demographic) },
-    ]), { zebra: true, size: 8, padding: 8.5, headerPadding: 8.5, after: 16 });
+    ]), { zebra: true, size: 11, padding: 8.5, headerSize: 11, headerPadding: 8.5, after: 16 });
   } else pdf.text("Sin ficha demográfica disponible para este año.");
 
   pdf.ensure(150); pdf.text("RESUMEN EJECUTIVO", { size: 12, bold: true, color: BLUE, after: 7 });
-  pdf.text(`Este reporte presenta las evaluaciones de ${data.employee.name} correspondientes a ${data.year} en ${data.company.name}. ${final ? `${guideTitle}: puntaje ${final.value}, nivel de riesgo ${REPORT_RISK_LABEL[final.level].toLowerCase()}.` : "No existe una evaluación completa de riesgo psicosocial para emitir una calificación final."} ${clinical?.score?.resultText ? `Guía I: ${clinical.score.resultText}.` : "Guía I: sin resultado completo disponible."} ${violence ? `El dominio Violencia presenta nivel ${REPORT_RISK_LABEL[violence.level].toLowerCase()}.` : "No hay resultado disponible del dominio Violencia."}`, { size: 11, justify: true, after: 14 });
-  pdf.text(`Estos resultados permiten identificar los factores que requieren revisión y orientar las medidas de prevención, atención y seguimiento del colaborador. El análisis corresponde a las respuestas disponibles del periodo seleccionado. Estatus de seguimiento: ${data.referralStatus || (followup ? "Pendiente" : "Sin canalización registrada")}.`, { size: 11, justify: true, after: 20 });
-  pdf.newPage(); pdf.heading("Análisis jerárquico de riesgos (NOM-035)");
+  {
+    const periodLabel =
+      longDate(data.evaluationStartedAt)
+      ?? longDate(risk?.completedAt ?? clinical?.completedAt ?? null)
+      ?? String(data.year);
+    const appliedGuide = risk
+      ? (risk.key === "nom035_guia2" ? "Guía de Referencia II" : "Guía de Referencia III")
+      : guideTitle;
+    const summaryOpts = { size: 11, justify: true as const, after: 14, keepTogether: true };
+    pdf.text(
+      `El presente reporte contiene los resultados individuales de la evaluación de factores de riesgo psicosocial de ${data.employee.name}, correspondiente al periodo ${periodLabel}, en ${data.company.name}.`,
+      summaryOpts,
+    );
+    if (final) {
+      pdf.text(
+        `Se aplicó la ${appliedGuide}, mediante la cual se obtuvo un puntaje total de ${final.value}, correspondiente a un nivel de riesgo ${REPORT_RISK_LABEL[final.level].toLowerCase()}. Los resultados representan la valoración de los factores de riesgo psicosocial identificados a partir de las respuestas proporcionadas por el trabajador. Su finalidad es orientar la prevención, el análisis de las condiciones de trabajo y la implementación de medidas de control.`,
+        summaryOpts,
+      );
+    } else {
+      pdf.text(
+        `Se contempló la aplicación de la ${appliedGuide}; no existe una evaluación completa de riesgo psicosocial para emitir un puntaje total ni un nivel de riesgo general. Los resultados disponibles representan la valoración a partir de las respuestas proporcionadas por el trabajador. Su finalidad es orientar la prevención, el análisis de las condiciones de trabajo y la implementación de medidas de control.`,
+        summaryOpts,
+      );
+    }
+    if (affectedViolence && violence) {
+      pdf.text(
+        `Respecto al dominio de violencia, se identificó un nivel de riesgo ${REPORT_RISK_LABEL[violence.level].toLowerCase()}, de acuerdo con las respuestas del instrumento aplicado. Los resultados permiten identificar indicadores relacionados con posibles situaciones de violencia laboral que requieren atención y seguimiento. La evaluación no constituye por sí misma una investigación ni una determinación definitiva sobre la existencia de acoso laboral, hostigamiento o conductas específicas. Recomendación: revisar las condiciones y situaciones identificadas, aplicando los mecanismos de atención y prevención establecidos por el centro de trabajo.`,
+        summaryOpts,
+      );
+    }
+    const guia1Interpretation = clinical?.score?.resultText
+      ?? (clinical && ["completed", "partial"].includes(clinical.status)
+        ? "sin interpretación clínica disponible"
+        : "sin resultado completo disponible");
+    const traumaticEvent = clinical?.score?.traumaticEventReported == null
+      ? "EVENTO TRAUMÁTICO SEVERO SIN RESULTADO DISPONIBLE"
+      : clinical.score.traumaticEventReported
+        ? "EVENTO TRAUMÁTICO SEVERO DETECTADO"
+        : "EVENTO TRAUMÁTICO SEVERO NO DETECTADO";
+    pdf.text(
+      `En relación con la identificación de acontecimientos traumáticos severos, mediante la Guía de Referencia I, se obtuvo el siguiente resultado: ${guia1Interpretation}. ${traumaticEvent}. La identificación de un acontecimiento traumático severo no constituye por sí misma un diagnóstico de trastorno de estrés postraumático.`,
+      { ...summaryOpts, after: 20 },
+    );
+  }
+  // Continúa en la misma hoja si hay espacio; evita una hoja casi vacía solo con el cierre del resumen.
+  if (pdf.y < 520) pdf.newPage();
+  pdf.heading("Resumen de resultados por categoría, dominio y dimensión");
   if (risk?.score) {
     const hierarchy = buildReportHierarchy(risk);
     const rows: Cell[][] = hierarchy.map(row => {
@@ -213,7 +290,7 @@ export async function renderIndividualReport(data: IndividualReportData): Promis
         { text: row.value.toFixed(1), center: true, bold: category || domain, background, color: category ? WHITE : MUTED },
       ];
     });
-    pdf.table(["Categoría / Dominio / Dimensión", "Nivel", "Puntos"], [382, 64, 54], rows, { size: 6.8, padding: 5.5, headerPadding: 6, after: 8 });
+    pdf.table(["Categoría / Dominio / Dimensión", "Nivel", "Puntos"], [382, 64, 54], rows, { size: 11, padding: 6, headerSize: 11, headerPadding: 7, after: 8 });
   } else {
     pdf.text("Sin resultados completos para el desglose por categoría, dominio y dimensión.");
   }
@@ -226,61 +303,147 @@ export async function renderIndividualReport(data: IndividualReportData): Promis
     if (!["completed", "partial"].includes(guide.status)) {
       pdf.text(`No se incluyen respuestas: ${STATUS[guide.status]?.toLowerCase() ?? "sin datos"}.`); continue;
     }
-    if (guide.status === "partial") pdf.text("Evaluación parcial. Los puntajes por respuesta no constituyen una calificación final.", { size: 9 });
-    const visible = form.sections.filter(s => isSectionVisible(s, guide.answers, form));
+    if (guide.status === "partial") pdf.text("Evaluación parcial. Los puntajes por respuesta no constituyen una calificación final.", { size: 11 });
+    // Mismo recorrido que al contestar: secciones visibles + todas sus preguntas, en orden de definición.
     const sectionNames: Record<string, string> = guide.key === "nom035_guia3" ? {
       b1: "Condiciones ambientales", b2: "Cantidad y ritmo de trabajo", b3: "Esfuerzo mental", b4: "Actividades y responsabilidades",
       b5: "Jornada de trabajo", b6: "Decisiones en el trabajo", b7: "Cambios en el trabajo", b8: "Capacitación e información",
       b9: "Jefes", b10: "Relaciones con compañeros", b11: "Rendimiento, reconocimiento, pertenencia y estabilidad", b12: "Violencia laboral",
-      clientes: "Atención a clientes y usuarios", jefe: "Actitudes de personas supervisadas",
-    } : {
+      filtro_clientes: "Atención a clientes y usuarios", clientes: "Atención a clientes y usuarios",
+      filtro_jefe: "Actitudes de personas supervisadas", jefe: "Actitudes de personas supervisadas",
+    } : guide.key === "nom035_guia2" ? {
       b1: "Condiciones, cantidad y ritmo de trabajo", b2: "Actividades y responsabilidades", b3: "Jornada y responsabilidades familiares",
       b4: "Decisiones en el trabajo", b5: "Capacitación e información", b6: "Relaciones con compañeros y jefe",
-      clientes: "Atención a clientes y usuarios", jefe: "Actitudes de personas supervisadas",
-    };
-    const allQuestions = form.sections.flatMap(section => section.questions);
+      filtro_clientes: "Atención a clientes y usuarios", clientes: "Atención a clientes y usuarios",
+      filtro_jefe: "Actitudes de personas supervisadas", jefe: "Actitudes de personas supervisadas",
+    } : {};
     const rows: Cell[][] = [];
-    for (const section of visible) {
-      const questions = section.questions.filter(question => !form.scoring || question.number != null);
-      if (!questions.length) continue;
-      rows.push([{ text: (sectionNames[section.id] || section.title || "Preguntas").toUpperCase(), section: true, bold: true, center: true, background: LIGHT }]);
-      for (const question of questions) {
+    let sequential = 0;
+    for (const section of form.sections) {
+      if (!isSectionVisible(section, guide.answers, form)) continue;
+      if (!section.questions.length) continue;
+      rows.push([{
+        text: (section.title || sectionNames[section.id] || "Preguntas").toUpperCase(),
+        section: true, bold: true, center: true, background: LIGHT,
+      }]);
+      for (const question of section.questions) {
+        sequential += 1;
         const row: Cell[] = [
-          { text: String(question.number ?? allQuestions.findIndex(item => item.id === question.id) + 1), center: true },
-          { text: question.text }, { text: reportAnswer(form, question, guide) },
+          { text: question.number != null ? String(question.number) : String(sequential), center: true },
+          { text: question.text },
+          { text: reportAnswer(form, question, guide) },
         ];
-        if (form.scoring) row.push({ text: reportItemPoints(form, question, guide)?.toString() ?? "—", center: true });
+        if (form.scoring) {
+          row.push({ text: reportItemPoints(form, question, guide)?.toString() ?? "—", center: true });
+        }
         rows.push(row);
       }
     }
     pdf.table(form.scoring ? ["ID", "Pregunta / Rubro", "Respuesta", "Pts"] : ["ID", "Pregunta / Sección", "Respuesta"],
-      form.scoring ? [24, 360, 86, 30] : [24, 412, 64], rows, { size: 8.5, padding: 6, headerSize: 8, headerPadding: 7, inset: 4 });
+      form.scoring ? [28, 340, 96, 36] : [28, 390, 82], rows, { size: 11, padding: 7, headerSize: 11, headerPadding: 8, inset: 4 });
   }
 
-  pdf.newPage(); pdf.text("DECLARACIÓN:", { size: 12, bold: true, color: BLUE, after: 9 });
-  pdf.text(`Declaro que recibí la información sobre los resultados de los cuestionarios aplicados de la NOM-035-STPS-2018, correspondientes a ${data.year}, relativos a factores de riesgo psicosocial, entorno organizacional, acontecimientos traumáticos severos y posibles situaciones de violencia laboral y acoso laboral. Asimismo, se me informaron las medidas de prevención y, en su caso, acciones de control y atención correspondientes. Entiendo que la información será tratada de manera confidencial, pero no anónima, y podrá utilizarse para dar seguimiento a mi situación y, en su caso, para canalización a atención especializada.`, { size: 11, justify: true, after: 20 });
-  pdf.text(`Canalización al Psicólogo: ${followup ? "SE IDENTIFICARON MOTIVOS PARA REVISIÓN Y CANALIZACIÓN." : "SIN MOTIVOS IDENTIFICADOS EN LOS RESULTADOS COMPLETOS DISPONIBLES."}`, { bold: true, after: 12 });
-  const reasons = [clinical?.score?.requiresClinicalAssessment ? "Guía I: requiere atención clínica" : null,
-    final && ["alto", "muy_alto"].includes(final.level) ? `${guideTitle}: riesgo general ${REPORT_RISK_LABEL[final.level].toLowerCase()}` : null,
-    affectedViolence ? `${guideTitle}: violencia laboral ${REPORT_RISK_LABEL[violence!.level].toLowerCase()}` : null].filter(Boolean);
-  if (reasons.length) pdf.text(`El seguimiento se fundamenta en los hallazgos de las evaluaciones disponibles: ${reasons.join(". ")}. Estos resultados permiten orientar la revisión del caso y, cuando corresponda, su canalización a una valoración profesional especializada.`, { justify: true, after: 14 });
-  pdf.text(`(Nivel de Riesgo: ${final ? REPORT_RISK_LABEL[final.level] : "Sin resultado"})`, { bold: true, after: 14 });
-  pdf.text(`Estatus registrado: ${data.referralStatus || (followup ? "Pendiente" : "Sin canalización registrada")}.`, { after: 18 });
-  if (data.guides.some(g => !["completed", "not_assigned", "not_selected"].includes(g.status))) pdf.text("Hay guías pendientes o parciales; la ausencia de un resultado no equivale a ausencia de riesgo.", { size: 9, color: MUTED, after: 18 });
-  pdf.text(`${data.company.name} reconoce el bienestar emocional como pilar fundamental de un entorno laboral sano, seguro y productivo. Te alentamos a recibir esta retroalimentación y, en su caso, tomar la oportunidad de canalización con apertura y confianza, recordando que la prioridad institucional es cuidar de tu salud psicosocial e integridad laboral. La firma acredita la recepción de esta información.`, { justify: true, after: 35 });
-  pdf.ensure(115); pdf.text("Firma de recibido:", { bold: true, after: 48 });
-  pdf.page.drawLine({ start: { x: pdf.left, y: pdf.y }, end: { x: pdf.left + 160, y: pdf.y }, thickness: 0.8, color: INK });
-  pdf.y -= 8; pdf.text(data.employee.name, { bold: true, after: 15 }); pdf.text("Fecha: ____________________", { size: 11, bold: true });
+  pdf.newPage();
+  pdf.text("CONFIDENCIALIDAD Y USO DE LA INFORMACIÓN", { size: 12, bold: true, color: BLUE, after: 14 });
+  pdf.text(
+    `${data.company.name} informa que la información contenida en este reporte corresponde a los resultados individuales de la evaluación de factores de riesgo psicosocial del trabajador, realizada conforme a la NOM-035-STPS.`,
+    { size: 11, justify: true, after: 12 },
+  );
+  pdf.text(
+    "Estos resultados tienen como finalidad contribuir a la prevención, análisis, retroalimentación y seguimiento de las condiciones relacionadas con el entorno laboral.",
+    { size: 11, justify: true, after: 12 },
+  );
+  pdf.text(
+    `${data.company.name} se compromete a tratar esta información de manera confidencial y restringir su acceso únicamente al personal autorizado, de conformidad con las disposiciones aplicables en materia de protección de datos personales.`,
+    { size: 11, justify: true, after: 22 },
+  );
+  pdf.text("PLATAFORMA TECNOLÓGICA", { size: 12, bold: true, color: BLUE, after: 14 });
+  pdf.text(
+    "Los datos y resultados contenidos en el presente reporte fueron procesados y generados mediante la Plataforma Gestiona Capital Humano, herramienta tecnológica especializada en la aplicación, evaluación y análisis de los cuestionarios de la NOM-035-STPS.",
+    { size: 11, justify: true, after: 12 },
+  );
+  pdf.text(
+    "La plataforma es desarrollada y administrada por Gestiona Capital Humano. Su utilización como herramienta tecnológica no implica que esta haya realizado directamente la aplicación de los cuestionarios, la prestación de servicios de consultoría o la interpretación profesional de los resultados.",
+    { size: 11, justify: true, after: 18 },
+  );
+  pdf.text("Más información: www.gestionach.com", { size: 11, bold: true, color: BLUE, after: 20 });
 
+  pdf.newPage();
+  {
+    const guia5 = FORM_DEFINITIONS.nom035_guia5;
+    const guia5Questions = guia5.sections.flatMap((section) => section.questions);
+    const demAnswer = (id: string) => {
+      if (!demographic || !["completed", "partial"].includes(demographic.status)) return "____________________";
+      const question = guia5Questions.find((item) => item.id === id);
+      if (!question) return "____________________";
+      const value = reportAnswer(guia5, question, demographic);
+      return !value || value === "Sin respuesta" ? "____________________" : value;
+    };
+    const responsibleName = data.company.employerRepresentative?.trim() || "____________________";
+
+    pdf.text("CONSTANCIA DE RECEPCIÓN DE RESULTADOS", { size: 12, bold: true, color: BLUE, after: 14 });
+    pdf.text(
+      `Por medio de la presente, hago constar que recibí de ${data.company.name} información y retroalimentación sobre los resultados de mi evaluación de factores de riesgo psicosocial, realizada conforme a la NOM-035-STPS.`,
+      { size: 11, justify: true, after: 12 },
+    );
+    pdf.text(
+      "Asimismo, manifiesto que recibí una explicación sobre el significado general de los resultados obtenidos y, en su caso, sobre las medidas de prevención, atención y seguimiento correspondientes.",
+      { size: 11, justify: true, after: 12 },
+    );
+    pdf.text(
+      "La firma de este documento acredita únicamente la recepción de la información y la retroalimentación proporcionada. No implica conformidad con los resultados, aceptación de conclusiones sobre conductas específicas ni renuncia a derecho alguno.",
+      { size: 11, justify: true, after: 20 },
+    );
+
+    pdf.text("Datos de recepción", { size: 11, bold: true, after: 10 });
+    pdf.text(`• Nombre del trabajador: ${data.employee.name}`, { size: 11, after: 6 });
+    pdf.text(`• Puesto: ${demAnswer("puesto")}`, { size: 11, after: 6 });
+    pdf.text(`• Área o departamento: ${demAnswer("departamento")}`, { size: 11, after: 6 });
+    pdf.text("• Fecha de entrega: ____________________", { size: 11, after: 22 });
+
+    pdf.text(`Nombre del trabajador: ${data.employee.name}`, { size: 11, after: 28 });
+    pdf.text("Firma del trabajador: ____________________", { size: 11, after: 16 });
+    pdf.text("Fecha de entrega: ____________________", { size: 11, after: 22 });
+    pdf.text(
+      `Nombre del responsable que proporciona la retroalimentación: ${responsibleName}`,
+      { size: 11, after: 6 },
+    );
+    pdf.text("Representante legal de la empresa / representante", { size: 11, color: MUTED, after: 14 });
+    pdf.text("Puesto: ____________________", { size: 11, after: 28 });
+    pdf.text("Firma del responsable: ____________________", { size: 11, after: 10 });
+  }
+
+  const logoBytes = await fs.readFile(path.join(process.cwd(), "assets/templates/gch-logo.png"));
+  const logo = await doc.embedPng(logoBytes);
+  const folio = `NOM035-${data.year}-${data.employee.id.replace(/-/g, "").slice(0, 10).toUpperCase()}${
+    data.riskGuide === "nom035_guia2" ? "-II" : data.riskGuide === "nom035_guia3" ? "-III" : ""
+  }`;
+  const contact = "hola@gestionach.com · https://www.gestionach.com/";
   const pages = doc.getPages();
   pages.forEach((page, index) => {
-    const footer = "Gestiona Capital Humano · hola@gestionach.com · https://www.gestionach.com/";
-    page.drawText(footer, { x: pdf.left, y: 28, size: 8, font: regular, color: MUTED });
+    const logoHeight = 32;
+    const logoWidth = (logo.width / logo.height) * logoHeight;
+    page.drawImage(logo, { x: pdf.left, y: 68, width: logoWidth, height: logoHeight });
+
+    const brandX = pdf.left + logoWidth + 10;
+    page.drawText("Gestiona Capital Humano", {
+      x: brandX, y: 88, size: 11, font: bold, color: MUTED,
+    });
+    const companyLine = pdf.wrap(data.company.name, pdf.width - logoWidth - 10, 11)[0] ?? data.company.name;
+    page.drawText(companyLine, {
+      x: brandX, y: 74, size: 11, font: regular, color: MUTED,
+    });
+    page.drawText(contact, {
+      x: pdf.left, y: 52, size: 11, font: regular, color: MUTED,
+    });
+    page.drawText(`Folio: ${folio}`, {
+      x: pdf.left, y: 36, size: 11, font: regular, color: MUTED,
+    });
     const pageLabel = `Página ${index + 1} de ${pages.length}`;
     page.drawText(pageLabel, {
-      x: pdf.left + pdf.width - regular.widthOfTextAtSize(pageLabel, 8),
-      y: 28,
-      size: 8,
+      x: pdf.left + pdf.width - regular.widthOfTextAtSize(pageLabel, 11),
+      y: 36,
+      size: 11,
       font: regular,
       color: MUTED,
     });
