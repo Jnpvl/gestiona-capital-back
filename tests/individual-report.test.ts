@@ -29,6 +29,7 @@ export function reportFixture(key: "nom035_guia2" | "nom035_guia3" = "nom035_gui
     riskGuide: key,
     guides: [fixtureGuide("nom035_guia1"), fixtureGuide(key), fixtureGuide("nom035_guia5")],
     referralStatus: "En atención",
+    advisorLogoUrl: null,
   };
 }
 
